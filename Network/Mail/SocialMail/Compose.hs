@@ -6,14 +6,20 @@ import qualified Codec.ActivityStream as AS
 import Codec.ActivityStream.Schema (SchemaVerb(..), SchemaObjectType(..))
 import Data.Aeson.Encode (encode)
 import Data.DateTime (DateTime)
+import Data.Maybe (catMaybes)
 import Data.Text (Text, unpack)
-import Network.Mail.Mime (Address(..), Encoding(..), Mail, Part(..))
+import Data.Text.Lazy (fromChunks)
+import Data.Text.Lazy.Encoding (encodeUtf8)
+import Network.Mail.Mime (Address(..), Encoding(..), Mail, Part(..), addPart)
 import Network.URI (URI(..), URIAuth(..))
 
 type Object = AS.Object SchemaObjectType
 type Activity = AS.Activity SchemaVerb SchemaObjectType
 
 -- composeNote :: Address -> Text -> Mail
+
+addActivity :: Activity -> Mail -> Mail
+addActivity act = addPart (catMaybes [fallbackPart act, Just (activityPart act)])
 
 noteActivity :: Address -> DateTime -> Text -> Activity
 noteActivity addr published text = minimal { AS._acVerb = Just Post
@@ -51,3 +57,16 @@ activityPart act = Part
   , partHeaders = []
   , partContent = encode act
   }
+
+fallbackPart :: Activity -> Maybe Part
+fallbackPart act = fmap (\text -> Part
+  { partType = "text/plain"
+  , partEncoding = QuotedPrintableText  -- TODO: Do I need to do the encoding?
+  , partFilename = Nothing
+  , partHeaders = []
+  , partContent = encodeUtf8 (fromChunks [text])
+  }) (fallback act)
+
+fallback :: Activity -> Maybe Text
+-- fallback act = _acObject act >>= _oContent
+fallback act = Nothing  -- TODO
