@@ -23,3 +23,14 @@ library
                        network-uri,
                        text
   default-language:    Haskell2010
+
+executable client
+  main-is:             client.hs
+  build-depends:       base >=4.7 && <4.8,
+                       activitystreams-aeson,
+                       aeson,
+                       datetime,
+                       mime-mail,
+                       network-uri,
+                       text
+  default-language:    Haskell2010

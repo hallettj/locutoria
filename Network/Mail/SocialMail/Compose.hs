@@ -2,15 +2,17 @@
 
 module Network.Mail.SocialMail.Compose where
 
-import qualified Codec.ActivityStream as AS
-import Codec.ActivityStream.Schema (SchemaVerb(..), SchemaObjectType(..))
-import Data.Aeson.Encode (encode)
+import Data.Aeson (decode, encode)
 import Data.DateTime (DateTime)
 import Data.Maybe (catMaybes)
-import Data.Text (Text, unpack)
+import Data.Monoid ((<>))
+import Data.Text (Text, replace, unpack)
 import Data.Text.Lazy (fromChunks)
 import Data.Text.Lazy.Encoding (encodeUtf8)
-import Network.Mail.Mime (Address(..), Encoding(..), Mail, Part(..), addPart)
+import qualified Codec.ActivityStream as AS
+import Codec.ActivityStream.Schema (SchemaVerb(..), SchemaObjectType(..))
+import Control.Monad (join)
+import Network.Mail.Mime (Address(..), Encoding(..), Mail(..), Part(..), addPart)
 import Network.URI (URI(..), URIAuth(..))
 
 type Object = AS.Object SchemaObjectType
@@ -24,6 +26,7 @@ addActivity act = addPart (catMaybes [fallbackPart act, Just (activityPart act)]
 noteActivity :: Address -> DateTime -> Text -> Activity
 noteActivity addr published text = minimal { AS._acVerb = Just Post
                                            , AS._acObject = Just note
+                                           , AS._acContent = Just text
                                            }
   where
     actor = toActor addr
@@ -32,6 +35,23 @@ noteActivity addr published text = minimal { AS._acVerb = Just Post
                           , AS._oContent = Just text
                           , AS._oPublished = Just published
                           }   
+
+likeActivity :: Address -> DateTime -> Activity -> Maybe Activity
+likeActivity addr published act = fmap (\o -> minimal
+  { AS._acVerb = Just Like
+  , AS._acObject = Just o
+  , AS._acContent = fmap ((<> "\n\n+1") . quote) (fallback act)
+  }) obj
+  where
+    obj = AS._acObject act
+    actor = toActor addr
+    minimal = AS.makeMinimalActivity actor published
+
+activities :: Mail -> [Activity]
+activities m = catMaybes (map parse (filter isActivity (join (mailParts m))))
+  where
+    isActivity part = partType part == "application/stream+json"
+    parse = decode . partContent
 
 toActor :: Address -> Object
 toActor addr = AS.emptyObject { AS._oDisplayName = addressName addr
@@ -68,5 +88,7 @@ fallbackPart act = fmap (\text -> Part
   }) (fallback act)
 
 fallback :: Activity -> Maybe Text
--- fallback act = _acObject act >>= _oContent
-fallback act = Nothing  -- TODO
+fallback = AS._acContent
+
+quote :: Text -> Text
+quote msg = "> " <> replace "\n" "\n> " msg
