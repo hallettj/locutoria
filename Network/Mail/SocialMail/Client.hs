@@ -19,7 +19,7 @@ data ClientEvent = GetChannels
                  | GotChannels [ChannelId]
                  | GetThreads ChannelId
                  | GetAllThreads 
-                 | GotThreads [(ThreadId, Text)]
+                 | GotThreads [ThreadInfo]
                  | ClientExit
   deriving Show
 
@@ -31,7 +31,7 @@ data DataEvent = FetchChannels Database
   deriving Show
 
 data UiEvent = RenderChannels [ChannelId]
-             | RenderThreads [(ThreadId, Text)]
+             | RenderThreads [ThreadInfo]
              | UiExit
              | UiNoop
   deriving Show

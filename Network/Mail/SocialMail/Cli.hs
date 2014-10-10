@@ -6,7 +6,7 @@ module Network.Mail.SocialMail.Cli where
 import Control.Event.Handler (AddHandler, newAddHandler)
 import Control.Monad (mapM_)
 import Data.Maybe (fromMaybe)
-import Data.Text (Text)
+import Data.Text (Text, append, pack)
 import qualified Data.Text.IO as TIO
 import Graphics.Vty.Attributes
 import Graphics.Vty.LLInput (Key(..), Modifier(..))
@@ -16,7 +16,7 @@ import Reactive.Banana.Frameworks (Frameworks, actuate, fromAddHandler, reactima
 import System.Exit (exitSuccess)
 
 import Network.Mail.SocialMail.Client
-import Network.Mail.SocialMail.Internal (ChannelId)
+import Network.Mail.SocialMail.Internal (ChannelId, ThreadInfo)
 import Network.Mail.SocialMail.Notmuch (ThreadId)
 
 type Channels = List (Maybe ChannelId) FormattedText
@@ -134,17 +134,19 @@ renderChannels channels cs = do
   clearList channels
   mapM_ (uncurry (addToList channels)) (zip ids widgets)
 
-renderThreads :: Widget Threads -> [(ThreadId, Text)] -> IO ()
+renderThreads :: Widget Threads -> [ThreadInfo] -> IO ()
 renderThreads threads ts = do
   clearList threads
-  mapM_ (uncurry (renderThread threads)) ts
+  mapM_ (renderThread threads) ts
 
-renderThread :: Widget Threads
-             -> ThreadId -> Text
-             -> IO ()
-renderThread threads tid summary = do
-  t <- plainText summary
+renderThread :: Widget Threads -> ThreadInfo -> IO ()
+renderThread threads (tid, summary, likes, liked) = do
+  let wlikes = if likes > 0 then summary `append` likeCount else summary
+  let wlikes' = if liked then wlikes `append` " ↑" else wlikes
+  t <- plainText wlikes'
   addToList threads tid t
+  where
+    likeCount = pack ("\n+" ++ show likes)
 
 showWelcome :: Widget Threads -> IO ()
 showWelcome threads = do

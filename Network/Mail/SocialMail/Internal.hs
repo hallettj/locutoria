@@ -14,9 +14,10 @@ import Network.Mail.Mime (Address(..), Mail(..), emptyMail, renderSendMailCustom
 import Network.Mail.SocialMail.Compose
 
 type ChannelId = Text
+type ThreadInfo = (ThreadId, Text, Int, Bool)
 
 fromList :: Database -> IO Query
-fromList db = queryCreate db "from:lists.galois.com OR to lists.galois.com"
+fromList db = queryCreate db "to:lists.galois.com"
 
 getListAddrs :: Database -> IO [Text]
 getListAddrs db = do
@@ -48,15 +49,15 @@ compose = do
 toAddress :: String -> Address
 toAddress email = Address { addressName = Nothing, addressEmail = pack email }
 
-getThreads :: Database -> Text -> IO [(ThreadId, Text)]
+getThreads :: Database -> Text -> IO [ThreadInfo]
 getThreads db chan = do
   q <- queryCreate db ("to:" ++ (unpack chan))
   -- queryThreads query
   r <- notmuch ["search", qText q]
   return $ map threadInfo (lines r)
 
-threadInfo :: String -> (ThreadId, Text)
-threadInfo l = (tid, summary)
+threadInfo :: String -> ThreadInfo
+threadInfo l = (tid, summary, 0, False)
   where
     (tid, rest) = splitAt 23 l
     summary = pack (drop 1 rest)
