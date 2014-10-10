@@ -22,7 +22,8 @@ data DatabaseMode =
 
 data Query = Query { qDb :: Database, qText :: String }
 
-data Thread = Thread { tId :: String }
+type ThreadId = String
+data Thread = Thread { tId :: ThreadId }
 
 databaseOpen :: FilePath -> DatabaseMode -> IO Database
 databaseOpen f m = return (Database f m)

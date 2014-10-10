@@ -5,7 +5,7 @@ module Network.Mail.SocialMail.Internal where
 import Data.DateTime (getCurrentTime)
 import Data.List (nub)
 import Data.Maybe (catMaybes)
-import Data.Text (Text, pack)
+import Data.Text (Text, pack, unpack)
 import qualified Data.Text.IO as T
 import Data.Text.ICU (MatchOption(..), Regex, find, group, regex)
 -- import Foreign.Notmuch
@@ -47,3 +47,15 @@ compose = do
 toAddress :: String -> Address
 toAddress email = Address { addressName = Nothing, addressEmail = pack email }
 
+getThreads :: Database -> Text -> IO [(ThreadId, Text)]
+getThreads db chan = do
+  q <- queryCreate db ("to:" ++ (unpack chan))
+  -- queryThreads query
+  r <- notmuch ["search", qText q]
+  return $ map threadInfo (lines r)
+
+threadInfo :: String -> (ThreadId, Text)
+threadInfo l = (tid, summary)
+  where
+    (tid, rest) = splitAt 23 l
+    summary = pack (drop 1 rest)
