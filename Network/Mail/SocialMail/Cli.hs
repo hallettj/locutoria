@@ -32,7 +32,7 @@ ui config = do
   setBoxChildSizePolicy layout (PerChild (BoxFixed 30) BoxAuto)
 
   fg <- newFocusGroup
-  addToFocusGroup fg layout
+  addToFocusGroup fg threads
 
   c <- newCollection
   addToCollection c layout fg
@@ -89,7 +89,7 @@ stepUi channels threads e = case e of
   UiNoop -> return ()
 
 selectedItem :: Attr
-selectedItem = Attr (SetTo standout) (SetTo bright_cyan) (SetTo black)
+selectedItem = Attr KeepCurrent (SetTo bright_cyan) (SetTo black)
 
 globalControls :: Widget a -> Key -> [Modifier] -> Maybe ClientEvent
 globalControls _ key mods =
