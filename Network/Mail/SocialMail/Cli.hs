@@ -50,6 +50,7 @@ ui config = do
       Nothing -> return False
 
   fg `onKeyPressed` (channelControls_ channels)
+  fg `onKeyPressed` (threadControls_ threads)
 
   channels `onSelectionChange` \e ->
     case channelSelection e of
@@ -105,22 +106,35 @@ channelControls _ key mods =
     Nothing
 
 channelControls_ :: Widget Channels -> Widget a -> Key -> [Modifier] -> IO Bool
-channelControls_ channels _ key mods =
-  if key == KASCII 'p' && MCtrl `elem` mods then
-    do
-      sel <- getSelected channels
-      let n  = fromMaybe 1 (fmap fst sel)
-      let n' = if n - 1 == 1 then 0 else n - 1
-      setSelected channels n'
+channelControls_ channels _ key mods = case (key, mods) of
+  (KASCII 'p', [MCtrl]) -> do
+    sel <- getSelected channels
+    let n  = fromMaybe 1 (fmap fst sel)
+    let n' = if n - 1 == 1 then 0 else n - 1
+    setSelected channels n'
+    return True
+  (KASCII 'n', [MCtrl]) -> do
+    sel <- getSelected channels
+    let n  = fromMaybe 1 (fmap fst sel)
+    let n' = if n + 1 == 1 then 2 else n + 1
+    setSelected channels n'
+    return True
+  _ ->
+    return False
+
+threadControls_ :: Widget Threads -> Widget a -> Key -> [Modifier] -> IO Bool
+threadControls_ threads _ key mods = case (key, mods) of
+  (KASCII 'j', []) -> do
+      sel <- getSelected threads
+      let n = fromMaybe (-1) (fmap fst sel)
+      setSelected threads (n + 1)
       return True
-  else if key == KASCII 'n' && MCtrl `elem` mods then
-    do
-      sel <- getSelected channels
-      let n  = fromMaybe 1 (fmap fst sel)
-      let n' = if n + 1 == 1 then 2 else n + 1
-      setSelected channels n'
+  (KASCII 'k', []) -> do
+      sel <- getSelected threads
+      let n = fromMaybe 1 (fmap fst sel)
+      setSelected threads (n - 1)
       return True
-  else
+  _ ->
     return False
 
 channelSelection :: SelectionEvent (Maybe ChannelId) b -> Maybe ClientEvent
