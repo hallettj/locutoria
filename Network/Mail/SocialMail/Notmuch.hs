@@ -4,8 +4,8 @@
 -- until I get that library working.
 module Network.Mail.SocialMail.Notmuch where
 
-import Codec.MIME.Parse (parseHeaders)
-import Codec.MIME.Type (MIMEParam(..))
+import Codec.MIME.Parse (parseMIMEMessage)
+import Codec.MIME.Type (MIMEParam(..), MIMEValue(..))
 import Data.CaseInsensitive (mk)
 import Data.Text (Text, pack)
 import qualified Data.Text as T
@@ -57,10 +57,6 @@ parseHeader :: Text -> FilePath -> IO [Text]
 parseHeader name f = withFile f ReadMode $ \handle -> do
   hSetEncoding handle latin1
   txt <- TIO.hGetContents handle
-  -- Hackish parsing here.  Where is the library that reads in an entire message
-  -- and returns headers?
-  let ls = takeWhile (\l -> T.length l > 0) (T.lines txt)
-  let ls' = filter (\l -> mk (T.take (T.length name) l) == mk name) ls
-  let (hs, _) = parseHeaders (T.unlines ls')
-  let tos = filter (\h -> mk (paramName h) == mk name) hs
-  return $ map paramValue tos
+  let val = parseMIMEMessage txt
+  let h = filter (\h -> mk (paramName h) == mk name) (mime_val_headers val)
+  return $ map paramValue h
