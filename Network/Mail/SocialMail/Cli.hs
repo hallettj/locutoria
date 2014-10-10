@@ -134,6 +134,13 @@ threadControls_ threads _ key mods = case (key, mods) of
       let n = fromMaybe 1 (fmap fst sel)
       setSelected threads (n - 1)
       return True
+  (KASCII 'g', []) -> do
+      setSelected threads 0
+      return True
+  (KASCII 'G', _) -> do
+      len <- getListSize threads
+      setSelected threads (len - 1)
+      return True
   _ ->
     return False
 
