@@ -2,6 +2,7 @@
 
 module Network.Mail.SocialMail.Cli where
 
+import Control.Event.Handler (Handler)
 import Control.Monad (mapM_)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -11,16 +12,17 @@ import Graphics.Vty.LLInput (Key(..), Modifier(..))
 import Graphics.Vty.Widgets.All
 import System.Exit (exitSuccess)
 
+import Network.Mail.SocialMail.Client
 import Network.Mail.SocialMail.Internal
-import Network.Mail.SocialMail.Notmuch (Database, ThreadId)
+import Network.Mail.SocialMail.Notmuch (ThreadId)
 
 type ChannelId = Text
 
 type Channels = List (Maybe ChannelId) FormattedText
 type Threads  = List ThreadId FormattedText
 
-ui :: Database -> IO ()
-ui db = do
+ui :: Handler ClientEvent -> IO ()
+ui fire = do
   channels <- newList selectedItem 1
   messages <- newList selectedItem 2
 
@@ -33,15 +35,25 @@ ui db = do
   c <- newCollection
   addToCollection c layout fg
 
+  let networkDescription :: forall t. Frameworks t => Moment t ()
+      networkDescription = do
+        ekeyboard <- fromAddHandler $ onKeyPressed fg
+        let
+          state = accumB initState
+        reactimate undefined
+
+  network <- compile networkDescription
+  actuate network
+
   fg `onKeyPressed` \this key modifiers ->
     if key == KASCII 'q' then
-      exitSuccess
+      fire Exit >> return True
     else
       return False
 
   fg `onKeyPressed` (channelControls channels)
 
-  channels `onSelectionChange` (renderThreads db messages)
+  channels `onSelectionChange` (refreshThreads messages)
 
   refreshChannels channels
   showWelcome messages
@@ -52,10 +64,12 @@ selectedItem :: Attr
 selectedItem = Attr (SetTo standout) (SetTo bright_cyan) (SetTo black)
 
 refreshChannels :: Widget Channels -> IO ()
-refreshChannels channels = do
-  addrs <- getListAddrs
-  widgets <- mapM plainText ("all" : "" : addrs)
-  let ids = Nothing : Nothing : map Just addrs
+refreshChannels channels = fire (GetChannels channels)
+
+renderChannels :: Widget Channels -> [Text] -> IO ()
+renderChannels channels cs = do
+  widgets <- mapM plainText ("all" : "" : cs)
+  let ids = Nothing : Nothing : map Just cs
   clearList channels
   mapM_ (uncurry (addToList channels)) (zip ids widgets)
 
@@ -80,22 +94,17 @@ channelControls channels this key mods =
   else
     return False
 
-renderThreads :: Database
-              -> Widget Threads
-              -> SelectionEvent (Maybe ChannelId) b
-              -> IO ()
-renderThreads db messages (SelectionOn 0 _ _) = do
-  
-
-renderThreads db messages (SelectionOn _ (Just channel) _) = do
-  ts <- getThreads db channel
-  clearList messages
-  mapM_ (uncurry (renderThread messages)) ts
-
-  -- ws <- mapM (uncurry renderThread) ts
-  -- forM_ (zip (map fst ts) ws) (uncurry (addToList messages))
+refreshThreads :: Widget Threads -> SelectionEvent (Maybe ChannelId) b -> IO ()
+renderThreads threads (SelectionOn 0 _ _) = fire (GetAllThreads threads)
+renderThreads threads (SelectionOn _ (Just channel) _) =
+  fire (GetThreads threads channel)
 renderThreads _ _ (SelectionOn _ Nothing _) = return ()
 renderThreads _ _ SelectionOff = return ()
+
+renderThreads :: Widget Threads -> [(ThreadId, Text)] -> IO ()
+renderThreads messages (SelectionOn _ (Just channel) _) = do
+  clearList messages
+  mapM_ (uncurry (renderThread messages)) ts
 
 renderThread :: Widget Threads
              -> ThreadId -> Text
