@@ -13,12 +13,13 @@ import Network.Mail.SocialMail.Notmuch
 import Network.Mail.Mime (Address(..), Mail(..), emptyMail, renderSendMailCustom)
 import Network.Mail.SocialMail.Compose
 
+type ChannelId = Text
+
 fromList :: Database -> IO Query
 fromList db = queryCreate db "from:lists.galois.com OR to lists.galois.com"
 
-getListAddrs :: IO [Text]
-getListAddrs = do
-  db <- databaseOpen "/home/jesse/mail/galois" DatabaseModeReadOnly
+getListAddrs :: Database -> IO [Text]
+getListAddrs db = do
   query <- fromList db
   ts <- queryThreads query
   ls <- fmap concat (mapM threadGetRecipients ts)

@@ -1,5 +1,6 @@
 module Network.Mail.SocialMail.Client where
 
+import Control.Monad (join, mapM)
 import Data.Text (Text, unpack)
 import Reactive.Banana (accumB)
 
@@ -14,26 +15,63 @@ data ClientState = ClientState
   { clChannels :: [ChannelId]
   }
 
-data ClientEvent = GetChannels (Widget Channels)
-                 | GetThreads (Widget Threads) ChannelId
-                 | GetAllThreads (Widget Threads)
-                 | Exit
+data ClientEvent = GetChannels
+                 | GotChannels [ChannelId]
+                 | GetThreads ChannelId
+                 | GetAllThreads 
+                 | GotThreads [(ThreadId, Text)]
+                 | ClientExit
   deriving Show
 
-step :: ClientConfig -> ClientEvent -> IO ()
+data Response = DataResp DataEvent | UiResp UiEvent
+  deriving Show
 
-step conf (GetChannels w) = do
-  addrs <- getListAddrs
-  renderChannels w addrs
+data DataEvent = FetchChannels Database
+               | FetchThreads Database [ChannelId]
+  deriving Show
 
-step conf (GetThreads w chan) = do
+data UiEvent = RenderChannels [ChannelId]
+             | RenderThreads [(ThreadId, Text)]
+             | UiExit
+             | UiNoop
+  deriving Show
+
+step :: ClientConfig -> ClientEvent -> ClientState -> (Response, ClientState)
+step conf GetChannels s =
   let db = clDb conf
-  ts <- getThreads db chan
-  renderThreads w ts
+  in
+  (DataResp (FetchChannels db), s)
 
-step _ Exit = exitSuccess
+step conf (GotChannels cs) s =
+  let s' = s { clChannels = cs }
+  in
+  (UiResp (RenderChannels cs), s')
 
-state = accumB initState
+step conf (GetThreads chan) s =
+  let db = clDb conf
+  in
+  (DataResp (FetchThreads db [chan]), s)
+
+step conf GetAllThreads s =
+  let db = clDb conf
+      cs = clChannels s
+  in
+  (DataResp (FetchThreads db cs), s)
+
+step conf (GotThreads ts) s =
+  (UiResp (RenderThreads ts), s)
+
+step _ ClientExit s = (UiResp UiExit, s)
+
+stepData :: (ClientEvent -> IO ()) -> DataEvent -> IO ()
+stepData fire e = case e of
+  FetchChannels db -> do
+    addrs <- getListAddrs db
+    fire (GotChannels addrs)
+
+  FetchThreads db chans -> do
+    ts <- mapM (getThreads db) chans
+    fire (GotThreads (join ts))
 
 initState :: ClientState
 initState = ClientState

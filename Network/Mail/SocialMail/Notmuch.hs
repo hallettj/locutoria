@@ -14,11 +14,12 @@ import System.IO
 import System.Process (readProcess)
 
 data Database = Database { dLoc :: FilePath, dMode :: DatabaseMode  }
+  deriving Show
 
 data DatabaseMode =
     DatabaseModeReadOnly |
     DatabaseModeReadWrite
-    deriving Enum
+  deriving (Enum, Show)
 
 data Query = Query { qDb :: Database, qText :: String }
 
