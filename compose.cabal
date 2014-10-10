@@ -42,5 +42,6 @@ executable client
                        process,
                        text,
                        text-icu,
+                       vty,
                        vty-ui
   default-language:    Haskell2010
