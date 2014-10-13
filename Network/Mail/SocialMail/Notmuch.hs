@@ -4,6 +4,8 @@
 -- until I get that library working.
 module Network.Mail.SocialMail.Notmuch where
 
+import Control.Applicative ((<$>), (<*>), pure)
+import Control.Monad (mzero)
 -- import Codec.MIME.Parse (parseMIMEMessage)
 -- import Codec.MIME.Type (MIMEParam(..), MIMEValue(..))
 import           Data.Aeson ( FromJSON(..)
@@ -17,14 +19,18 @@ import           Data.Aeson ( FromJSON(..)
                             )
 import qualified Data.Aeson as Ae
 import Data.Aeson.TH
+import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Strict as HM
 import Data.CaseInsensitive (mk)
-import Data.Char (ord)
+-- import Data.Char (ord)
+import Data.Maybe (catMaybes, fromJust)
 import Data.Text (Text, pack)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Data.Vector ((!))
+import qualified Data.Vector as V
 import System.IO
-import System.Process (readProcess)
+import System.Process (CreateProcess(..), StdStream(..), createProcess, proc, readProcess)
 
 data Database = Database { dLoc :: FilePath, dMode :: DatabaseMode  }
   deriving Show
@@ -58,50 +64,73 @@ threadGetRecipients = threadGetHeaderValues "To"
 
 threadGetHeaderValues :: Text -> Thread -> IO [Text]
 threadGetHeaderValues h t = do
-  msgs <- fmap lines (notmuch ["search", "--output=files", tId t])
-  fmap concat (mapM (parseHeader h) msgs)
+  out <- notmuchBS ["show", "--format=json", tId t]
+  let parsed = Ae.eitherDecode out :: Either String [[MsgThread]]
+  case parsed of
+    Left err -> putStrLn err >> return []
+    Right t ->
+      let ms = t >>= flatThread
+      in
+      return $ catMaybes $ map (lookup h . msgHeaders) ms
+
+flatThread :: [MsgThread] -> [Message]
+flatThread = (>>= tMsgs)
+  where
+    tMsgs t = mtMsg t : flatThread (mtReplies t)
 
 notmuch :: [String] -> IO String
 notmuch args = readProcess "/usr/bin/notmuch" opts ""
   where
     opts = ["--config=/home/jesse/.notmuch-galois"] ++ args
 
-parseHeader :: Text -> FilePath -> IO [Text]
-parseHeader name f = withFile f ReadMode $ \handle -> do
-  hSetEncoding handle latin1
-  txt <- TIO.hGetContents handle
-  -- let txt' = pack (strip (T.unpack txt))
-  let val = parseMIMEMessage txt
-  let h = filter (\h -> mk (paramName h) == mk name) (mime_val_headers val)
-  mapM_ (TIO.putStrLn . paramValue) h
-  return $ map paramValue h
-
--- Strips control codes and extended characters.
-strip :: String -> String
-strip = filter (\x -> ord x > 32 && ord x < 126 || ord x `elem` [9, 10, 13])
+notmuchBS :: [String] -> IO BS.ByteString
+notmuchBS args = do
+  (_, Just hout, _, _) <-
+    createProcess (proc "/usr/bin/notmuch" opts) { std_out = CreatePipe }
+  BS.hGetContents hout
+  where
+    opts = ["--config=/home/jesse/.notmuch-galois"] ++ args
 
 
+data MsgThread = MsgThread
+  { mtMsg :: Message
+  , mtReplies :: [MsgThread]
+  }
+  deriving Show
 
 data Message = Message
-  { id :: Text
-  , headers :: [(Text, Text)]
-  , body :: [MessagePart]
+  { msgId :: Text
+  , msgHeaders :: [(Text, Text)]
+  , msgBody :: [MessagePart]
   }
+  deriving Show
 
 data MessagePart = MessagePart
-  { id :: Int
-  , contentType :: Text
+  { mpId :: Int
+  , mpContentType :: Text
   }
+  deriving Show
+
+instance FromJSON MsgThread where
+  parseJSON (Ae.Array a) = if V.length a == 2 then
+    MsgThread <$> msg <*> replies
+  else
+    fail "error parsing MsgThread: expected pair of message and reply list"
+    where
+      msg = parseJSON (a ! 0)
+      replies = parseJSON (a ! 1)
+  parseJSON _ = fail "error parsing MsgThread: expected array"
 
 instance FromJSON Message where
   parseJSON (Ae.Object o) =
     Message <$> o .: "id"
-            <*> o .: "headers"
+            <*> (HM.toList <$> o .: "headers")
             <*> o .: "body"
-  parseJSON _ = mzero
+    where
+  parseJSON _ = fail "error parsing Message: expected object"
 
 instance FromJSON MessagePart where
   parseJSON (Ae.Object o) =
     MessagePart <$> o .: "id"
                 <*> o .: "content-type"
-  parseJSON _ = mzero
+  parseJSON _ = fail "error parsing MessagePart: expected object"
