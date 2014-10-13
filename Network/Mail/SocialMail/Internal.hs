@@ -2,13 +2,20 @@
 
 module Network.Mail.SocialMail.Internal where
 
+import Codec.ActivityStream.Dynamic
+import Control.Applicative ((<$>), (<*>))
+import Control.Lens ((&), (.~), (^.))
+import Control.Monad (join, mapM)
+import Data.Aeson (decode)
 import Data.DateTime (getCurrentTime)
 import Data.List (nub)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromJust)
 import Data.Text (Text, pack, unpack)
-import qualified Data.Text.IO as T
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 import Data.Text.ICU (MatchOption(..), Regex, find, group, regex)
 -- import Foreign.Notmuch
+import Network.URI (URI, parseURI)
 import Network.Mail.SocialMail.Notmuch
 import Network.Mail.Mime (Address(..), Mail(..), emptyMail, renderSendMailCustom)
 import Network.Mail.SocialMail.Compose
@@ -61,3 +68,47 @@ threadInfo l = (tid, summary, 0, False)
   where
     (tid, rest) = splitAt 23 l
     summary = pack (drop 1 rest)
+
+getThreadActivities :: Thread -> IO [Activity]
+getThreadActivities t = do
+  ms <- flatThread <$> threadGetMessages t
+  join <$> mapM getMessageActivities ms
+
+getMessageActivities :: Message -> IO [Activity]
+getMessageActivities m = do
+  let parts    = messageParts m
+  let actParts = filter actPart parts
+  partsBS <- mapM getPart actParts
+  return $ catMaybes (map decode partsBS)
+  where
+    actPart = (== "application/stream+json") . mpContentType  -- TODO: mimetype parser?
+    getPart p = notmuchBS ["show", "--part=" ++ show (mpId p), "id:" ++ unpack (msgId m)]
+
+getLikes :: Thread -> IO [(URI, URI)]
+getLikes t = do
+  acts <- getThreadActivities t
+  let likeActs = filter ((== Just like) . (^. acVerb)) acts
+  return $ catMaybes (map uriPair likeActs)
+  where
+    like = "like" :: Text
+    objUri a = do
+      obj    <- a ^. acObject
+      objId  <- obj ^. oId
+      parseURI (unpack objId)
+    actorUri a = do
+      let actor =  a ^. acActor
+      actId  <- actor ^. oId
+      parseURI (unpack actId)
+    uriPair a = (,) <$> actorUri a <*> objUri a
+
+messageParts :: Message -> [MessagePart]
+messageParts m = msgBody m >>= parts
+  where
+    -- TODO: check content-type for "multipart/*"
+    parts p = p : mpSubparts p
+
+getThread :: Database -> MessageId -> IO Thread
+getThread db mId = do
+  q <- queryCreate db ("id:" ++ unpack mId)
+  ts <- queryThreads q
+  return $ head ts

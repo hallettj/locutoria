@@ -48,6 +48,9 @@ data Query = Query { qDb :: Database, qText :: String }
 
 type ThreadId = String
 data Thread = Thread { tId :: ThreadId }
+  deriving Eq
+
+type MessageId = Text
 
 databaseOpen :: FilePath -> DatabaseMode -> IO Database
 databaseOpen f m = return (Database f m)
@@ -66,17 +69,21 @@ threadGetAuthors = threadGetHeaderValues "From"
 threadGetRecipients :: Thread -> IO [Text]
 threadGetRecipients = threadGetHeaderValues "To"
 
-threadGetHeaderValues :: Text -> Thread -> IO [Text]
-threadGetHeaderValues h t = do
-  out <- notmuchBS ["show", "--format=json", tId t]
+threadGetMessages :: Thread -> IO [MsgThread]
+threadGetMessages t = do
+  out <- notmuchBS ["show", "--format=json", "--body=false", tId t]
   let parsed = Ae.eitherDecode out :: Either String [[MsgThread]]
   case parsed of
     Left err -> putStrLn err >> return []
     Right t ->
-      let ms = t >>= flatThread
-      in
-      return $ catMaybes $ map (lookup h . msgHeaders) ms
+      return $ head t
 
+threadGetHeaderValues :: Text -> Thread -> IO [Text]
+threadGetHeaderValues h t = do
+  ms <- flatThread <$> threadGetMessages t
+  return $ catMaybes $ map (lookup h . msgHeaders) ms
+
+-- TODO: use a Foldable instance
 flatThread :: [MsgThread] -> [Message]
 flatThread = (>>= tMsgs)
   where
@@ -103,7 +110,7 @@ data MsgThread = MsgThread
   deriving Show
 
 data Message = Message
-  { msgId :: Text
+  { msgId :: MessageId
   , msgHeaders :: [(Text, Text)]
   , msgBody :: [MessagePart]
   }
@@ -112,6 +119,7 @@ data Message = Message
 data MessagePart = MessagePart
   { mpId :: Int
   , mpContentType :: Text
+  , mpSubparts :: [MessagePart]
   }
   deriving (Eq, Show)
 
@@ -137,6 +145,13 @@ instance FromJSON MessagePart where
   parseJSON (Ae.Object o) =
     MessagePart <$> o .: "id"
                 <*> o .: "content-type"
+                <*> subparts
+    where
+      content = HM.lookup "content" o
+      subparts = case content of
+        Just ps@(Ae.Array _) -> parseJSON ps
+        Nothing -> pure []
+
   parseJSON _ = fail "error parsing MessagePart: expected object"
 
 -- per RFC 2392

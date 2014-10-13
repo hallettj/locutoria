@@ -62,6 +62,7 @@ ui config = do
   actuate network
 
   fireClientEvent GetChannels
+  fireClientEvent GetLikeCounts
 
   runUi c defaultContext
 
@@ -86,7 +87,6 @@ stepUi channels threads e = case e of
   RenderChannels cs -> renderChannels channels cs
   RenderThreads ts -> renderThreads threads ts
   UiExit -> exitSuccess
-  UiNoop -> return ()
 
 selectedItem :: Attr
 selectedItem = Attr KeepCurrent (SetTo bright_cyan) (SetTo black)
@@ -101,7 +101,8 @@ globalControls _ key mods =
 channelControls :: Widget a -> Key -> [Modifier] -> Maybe ClientEvent
 channelControls _ key mods =
   if key == KASCII '@' then
-    Just GetChannels
+    -- Just GetChannels
+    Just GetLikeCounts
   else
     Nothing
 

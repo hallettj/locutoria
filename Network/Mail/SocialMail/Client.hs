@@ -1,79 +1,91 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Network.Mail.SocialMail.Client where
 
 import Control.Monad (join, mapM)
+import Data.List (foldl')
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import Data.Text (Text, unpack)
 import Reactive.Banana (accumB)
 
-import Network.Mail.SocialMail.Internal
-import Network.Mail.SocialMail.Notmuch
+import           Network.Mail.SocialMail.Index
+import qualified Network.Mail.SocialMail.Index as Index
+import           Network.Mail.SocialMail.Internal
+import           Network.Mail.SocialMail.Notmuch
 
 data ClientConfig = ClientConfig
   { clDb :: Database
   }
 
 data ClientState = ClientState
-  { clChannels :: [ChannelId]
+  { clIndex           :: Index
+  , clSelectedChannel :: Maybe ChannelId
   }
 
 data ClientEvent = GetChannels
-                 | GotChannels [ChannelId]
                  | GetThreads ChannelId
-                 | GetAllThreads 
-                 | GotThreads [ThreadInfo]
+                 | GetAllThreads
+                 | GetLikeCounts
+                 | IndexUpdate (Index -> Index)
                  | ClientExit
-  deriving Show
 
-data Response = DataResp DataEvent | UiResp UiEvent
-  deriving Show
+data Response = DataResp DataEvent | UiResp UiEvent | Noop
 
-data DataEvent = FetchChannels Database
-               | FetchThreads Database [ChannelId]
-  deriving Show
+data DataEvent = FetchChannels Database Index
+               | FetchThreads Database Index [ChannelId]
+               | FetchLikeCounts Database Index
 
 data UiEvent = RenderChannels [ChannelId]
              | RenderThreads [ThreadInfo]
              | UiExit
-             | UiNoop
   deriving Show
 
 step :: ClientConfig -> ClientEvent -> ClientState -> (Response, ClientState)
-step conf GetChannels s =
-  let db = clDb conf
-  in
-  (DataResp (FetchChannels db), s)
+step conf event s = case event of
+  GetChannels ->
+    (DataResp (FetchChannels db index), s)
 
-step conf (GotChannels cs) s =
-  let s' = s { clChannels = cs }
-  in
-  (UiResp (RenderChannels cs), s')
+  GetThreads chan ->
+    (DataResp (FetchThreads db index [chan]), s)
 
-step conf (GetThreads chan) s =
-  let db = clDb conf
-  in
-  (DataResp (FetchThreads db [chan]), s)
+  GetAllThreads ->
+    let cs = iChannels index
+    in
+    (DataResp (FetchThreads db index cs), s)
 
-step conf GetAllThreads s =
-  let db = clDb conf
-      cs = clChannels s
-  in
-  (DataResp (FetchThreads db cs), s)
+  GetLikeCounts ->
+    (DataResp (FetchLikeCounts db index), s)
 
-step conf (GotThreads ts) s =
-  (UiResp (RenderThreads ts), s)
+  IndexUpdate f ->
+    let index' = f index
+        s' = s { clIndex = index' }
+    in
+    (UiResp undefined, s')  -- TODO: update UI
 
-step _ ClientExit s = (UiResp UiExit, s)
+  ClientExit ->
+    (UiResp UiExit, s)
+
+  where
+    db    = clDb conf
+    index = clIndex s
 
 stepData :: (ClientEvent -> IO ()) -> DataEvent -> IO ()
 stepData fire e = case e of
-  FetchChannels db -> do
-    addrs <- getListAddrs db
-    fire (GotChannels addrs)
+  FetchChannels db index -> do
+    index' <- fetchChannels db index
+    fire (IndexUpdate index')
 
-  FetchThreads db chans -> do
-    ts <- mapM (getThreads db) chans
-    fire (GotThreads (join ts))
+  FetchThreads db index chans -> do
+    index' <- fetchThreads db index chans
+    fire (IndexUpdate index')
+
+  FetchLikeCounts db index -> do
+    index' <- fetchLikeCounts db index
+    fire (IndexUpdate index')
 
 initState :: ClientState
 initState = ClientState
-  { clChannels = []
+  { clIndex           = Index.empty
+  , clSelectedChannel = Nothing
   }
