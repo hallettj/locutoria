@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- This is intended to emulate the api of Foreign.Notmuch; to be used as a shim
@@ -24,13 +25,16 @@ import qualified Data.HashMap.Strict as HM
 import Data.CaseInsensitive (mk)
 -- import Data.Char (ord)
 import Data.Maybe (catMaybes, fromJust)
-import Data.Text (Text, pack)
+import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Data.Vector ((!))
 import qualified Data.Vector as V
+import Network.URI (URI(..))
 import System.IO
 import System.Process (CreateProcess(..), StdStream(..), createProcess, proc, readProcess)
+
+import Network.Mail.SocialMail.Identifiable
 
 data Database = Database { dLoc :: FilePath, dMode :: DatabaseMode  }
   deriving Show
@@ -109,7 +113,7 @@ data MessagePart = MessagePart
   { mpId :: Int
   , mpContentType :: Text
   }
-  deriving Show
+  deriving (Eq, Show)
 
 instance FromJSON MsgThread where
   parseJSON (Ae.Array a) = if V.length a == 2 then
@@ -134,3 +138,23 @@ instance FromJSON MessagePart where
     MessagePart <$> o .: "id"
                 <*> o .: "content-type"
   parseJSON _ = fail "error parsing MessagePart: expected object"
+
+-- per RFC 2392
+instance Identifiable Message where
+  toUri m = URI
+    { uriScheme = "mid:"
+    , uriAuthority = Nothing
+    , uriPath = unpack (msgId m)
+    , uriQuery = ""
+    , uriFragment = ""
+    }
+
+-- per RFC 2392
+instance Identifiable (Message, MessagePart) where
+  toUri (m, p) = URI
+    { uriScheme = "mid:"
+    , uriAuthority = Nothing
+    , uriPath = unpack (msgId m) ++ "/" ++ show (mpId p)
+    , uriQuery = ""
+    , uriFragment = ""
+    }

@@ -14,6 +14,7 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Network.Mail.SocialMail.Compose,
+                       Network.Mail.SocialMail.Identifiable,
                        Network.Mail.SocialMail.Notmuch
   --other-modules:       Network.Mail.SocialMail.Internal
   build-depends:       base >=4.7 && <4.8,

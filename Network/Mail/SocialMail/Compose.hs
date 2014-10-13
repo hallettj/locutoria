@@ -5,15 +5,17 @@ module Network.Mail.SocialMail.Compose where
 import Control.Lens ((&), (.~), (^.))
 import Data.Aeson (decode, encode)
 import Data.DateTime (DateTime)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromJust)
 import Data.Monoid ((<>))
-import Data.Text (Text, append, replace)
+import Data.Text (Text, append, pack, replace, unpack)
 import Data.Text.Lazy (fromChunks)
 import Data.Text.Lazy.Encoding (encodeUtf8)
 import Codec.ActivityStream.Dynamic
 import Control.Monad (join)
 import Network.Mail.Mime (Address(..), Encoding(..), Mail(..), Part(..), addPart)
-import Network.URI (URI(..), URIAuth(..))
+import Network.URI (URI(..), parseURI)
+
+import Network.Mail.SocialMail.Identifiable
 
 -- composeNote :: Address -> Text -> Mail
 
@@ -22,28 +24,26 @@ addActivity act = addPart (catMaybes [fallbackPart act, Just (activityPart act)]
 
 noteActivity :: Address -> DateTime -> Text -> Activity
 noteActivity addr published text =
-  minimal
+  makeActivity actor published
     & acVerb    .~ Just ("post" :: Text)
     & acObject  .~ Just note
     & acContent .~ Just text
   where
     actor = toActor addr
-    minimal = makeActivity actor published
     note = emptyObject
       & oAuthor    .~ Just actor
       & oContent   .~ Just text
       & oPublished .~ Just published
 
--- likeActivity :: Address -> DateTime -> Activity -> Maybe Activity
--- likeActivity addr published act = fmap (\o -> minimal
---   { AS._acVerb = Just Like
---   , AS._acObject = Just o
---   , AS._acContent = fmap ((<> "\n\n+1") . quote) (fallback act)
---   }) obj
---   where
---     obj = AS._acObject act
---     actor = toActor addr
---     minimal = AS.makeMinimalActivity actor published
+likeActivity :: Address -> DateTime -> Activity -> Activity
+likeActivity addr published act =
+  makeActivity actor published
+    & acVerb    .~ Just ("like" :: Text)
+    & acObject  .~ Just obj
+    & acContent .~ fmap ((<> "\n\n+1") . quote) (fallback act)
+  where
+    actor = toActor addr
+    obj = (asObject act) & oObjectType .~ (Just "activity" :: Maybe Text)
 
 activities :: Mail -> [Activity]
 activities m = catMaybes (map parse (filter isActivity (join (mailParts m))))
@@ -55,11 +55,22 @@ toActor :: Address -> Object
 toActor addr =
   emptyObject
     & oDisplayName .~ addressName addr
-    & oURL         .~ Just (toUri (addressEmail addr))
+    & oId          .~ Just (pack (show (toUri addr)))
 
--- Converts email address to a URI
-toUri :: Text -> Text
-toUri = append "mailto:"
+instance Identifiable Address where
+  toUri addr = URI
+    { uriScheme = "mailto:"
+    , uriAuthority = Nothing
+    , uriPath = unpack (addressEmail addr)
+    , uriQuery = ""
+    , uriFragment = ""
+    }
+
+instance Identifiable Object where
+  toUri o = fromJust $ fmap unpack (o ^. oId) >>= parseURI
+
+instance Identifiable Activity where
+  toUri o = fromJust $ fmap unpack (o ^. acId) >>= parseURI
 
 activityPart :: Activity -> Part
 activityPart act = Part
