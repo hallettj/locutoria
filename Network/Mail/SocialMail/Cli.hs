@@ -1,18 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 module Network.Mail.SocialMail.Cli where
 
-import Control.Event.Handler (AddHandler, newAddHandler)
+import Control.Event.Handler (Handler)
 import Control.Monad (mapM_)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, append, pack)
 import qualified Data.Text.IO as TIO
 import Graphics.Vty.Attributes
-import Graphics.Vty.LLInput (Key(..), Modifier(..))
-import Graphics.Vty.Widgets.All
-import Reactive.Banana (Moment, compile, filterE, mapAccum)
-import Reactive.Banana.Frameworks (Frameworks, actuate, fromAddHandler, reactimate)
+import Graphics.Vty.Input (Key(..), Modifier(..))
+import Graphics.Vty.Widgets.All hiding (Handler)
 import System.Exit (exitSuccess)
 
 import Network.Mail.SocialMail.Client
@@ -22,10 +19,10 @@ import Network.Mail.SocialMail.Notmuch (ThreadId)
 type Channels = List (Maybe ChannelId) FormattedText
 type Threads  = List ThreadId FormattedText
 
-ui :: ClientConfig -> IO ()
-ui config = do
-  channels <- newList selectedItem 1
-  threads <- newList selectedItem 2
+ui :: ClientConfig -> Handler ClientEvent -> IO (Handler UiEvent)
+ui config fireClientEvent = do
+  channels <- newList 1
+  threads <- newList 2
   showWelcome threads
 
   layout <- hBox channels threads
@@ -36,8 +33,6 @@ ui config = do
 
   c <- newCollection
   addToCollection c layout fg
-
-  (addClientEvent, fireClientEvent) <- newAddHandler
 
   fg `onKeyPressed` \this key modifiers ->
     case globalControls this key modifiers of
@@ -57,50 +52,26 @@ ui config = do
       Just ev -> fireClientEvent ev
       Nothing -> return ()
 
-  network <- compile $
-    networkDescription addClientEvent fireClientEvent config channels threads
-  actuate network
-
-  fireClientEvent GetChannels
-  fireClientEvent GetLikeCounts
-
   runUi c defaultContext
 
-networkDescription :: forall t. Frameworks t => AddHandler ClientEvent
-                                       -> (ClientEvent -> IO ())
-                                       -> ClientConfig
-                                       -> Widget Channels
-                                       -> Widget Threads
-                                       -> Moment t ()
-networkDescription addEvent fire config channels threads = do
-  clientEvents <- fromAddHandler addEvent
-  let
-    responseActions = fmap (step config) clientEvents
-    (responses, state) = mapAccum initState responseActions
-  reactimate $ fmap (\e -> case e of
-    DataResp e' -> stepData fire e'
-    UiResp e' -> stepUi channels threads e'
-    ) responses
+  return $ stepUi channels threads
 
-stepUi :: Widget Channels -> Widget Threads -> UiEvent -> IO ()
+stepUi :: Widget Channels -> Widget Threads -> Handler UiEvent
 stepUi channels threads e = case e of
   RenderChannels cs -> renderChannels channels cs
   RenderThreads ts -> renderThreads threads ts
   UiExit -> exitSuccess
 
-selectedItem :: Attr
-selectedItem = Attr KeepCurrent (SetTo bright_cyan) (SetTo black)
-
 globalControls :: Widget a -> Key -> [Modifier] -> Maybe ClientEvent
 globalControls _ key mods =
-    if key == KASCII 'q' then
+    if key == KChar 'q' then
       Just ClientExit
     else
       Nothing
 
 channelControls :: Widget a -> Key -> [Modifier] -> Maybe ClientEvent
 channelControls _ key mods =
-  if key == KASCII '@' then
+  if key == KChar '@' then
     -- Just GetChannels
     Just GetLikeCounts
   else
@@ -108,13 +79,13 @@ channelControls _ key mods =
 
 channelControls_ :: Widget Channels -> Widget a -> Key -> [Modifier] -> IO Bool
 channelControls_ channels _ key mods = case (key, mods) of
-  (KASCII 'p', [MCtrl]) -> do
+  (KChar 'p', [MCtrl]) -> do
     sel <- getSelected channels
     let n  = fromMaybe 1 (fmap fst sel)
     let n' = if n - 1 == 1 then 0 else n - 1
     setSelected channels n'
     return True
-  (KASCII 'n', [MCtrl]) -> do
+  (KChar 'n', [MCtrl]) -> do
     sel <- getSelected channels
     let n  = fromMaybe 1 (fmap fst sel)
     let n' = if n + 1 == 1 then 2 else n + 1
@@ -125,20 +96,20 @@ channelControls_ channels _ key mods = case (key, mods) of
 
 threadControls_ :: Widget Threads -> Widget a -> Key -> [Modifier] -> IO Bool
 threadControls_ threads _ key mods = case (key, mods) of
-  (KASCII 'j', []) -> do
+  (KChar 'j', []) -> do
       sel <- getSelected threads
       let n = fromMaybe (-1) (fmap fst sel)
       setSelected threads (n + 1)
       return True
-  (KASCII 'k', []) -> do
+  (KChar 'k', []) -> do
       sel <- getSelected threads
       let n = fromMaybe 1 (fmap fst sel)
       setSelected threads (n - 1)
       return True
-  (KASCII 'g', []) -> do
+  (KChar 'g', []) -> do
       setSelected threads 0
       return True
-  (KASCII 'G', _) -> do
+  (KChar 'G', _) -> do
       len <- getListSize threads
       setSelected threads (len - 1)
       return True

@@ -54,6 +54,6 @@ executable client
                        text-icu,
                        unordered-containers,
                        vector,
-                       vty,
+                       vty >=5.0.0,
                        vty-ui
   default-language:    Haskell2010
