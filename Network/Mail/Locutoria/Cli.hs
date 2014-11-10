@@ -3,11 +3,8 @@
 module Network.Mail.Locutoria.Cli where
 
 import Control.Event.Handler (Handler)
-import Control.Monad (mapM_)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, append, pack)
-import qualified Data.Text.IO as TIO
-import Graphics.Vty.Attributes
 import Graphics.Vty.Input (Key(..), Modifier(..))
 import Graphics.Vty.Widgets.All hiding (Handler)
 import System.Exit (exitSuccess)
@@ -19,8 +16,8 @@ import Network.Mail.Locutoria.Notmuch (ThreadId)
 type Channels = List (Maybe ChannelId) FormattedText
 type Threads  = List ThreadId FormattedText
 
-ui :: ClientConfig -> Handler ClientEvent -> IO (Handler UiEvent)
-ui config fireClientEvent = do
+ui :: Handler ClientEvent -> IO (Handler UiEvent)
+ui fireClientEvent = do
   channels <- newList 1
   threads <- newList 2
   showWelcome threads
@@ -29,10 +26,10 @@ ui config fireClientEvent = do
   setBoxChildSizePolicy layout (PerChild (BoxFixed 30) BoxAuto)
 
   fg <- newFocusGroup
-  addToFocusGroup fg threads
+  _  <- addToFocusGroup fg threads
 
   c <- newCollection
-  addToCollection c layout fg
+  _ <- addToCollection c layout fg
 
   fg `onKeyPressed` \this key modifiers ->
     case globalControls this key modifiers of
@@ -63,14 +60,14 @@ stepUi channels threads e = case e of
   UiExit -> exitSuccess
 
 globalControls :: Widget a -> Key -> [Modifier] -> Maybe ClientEvent
-globalControls _ key mods =
+globalControls _ key _ =
     if key == KChar 'q' then
       Just ClientExit
     else
       Nothing
 
 channelControls :: Widget a -> Key -> [Modifier] -> Maybe ClientEvent
-channelControls _ key mods =
+channelControls _ key _ =
   if key == KChar '@' then
     -- Just GetChannels
     Just GetLikeCounts
@@ -119,6 +116,7 @@ threadControls_ threads _ key mods = case (key, mods) of
 channelSelection :: SelectionEvent (Maybe ChannelId) b -> Maybe ClientEvent
 channelSelection (SelectionOn 0 _ _) = Just GetAllThreads
 channelSelection (SelectionOn _ channel _) = fmap GetThreads channel
+channelSelection SelectionOff = Nothing
 
 renderChannels :: Widget Channels -> [Text] -> IO ()
 renderChannels channels cs = do

@@ -27,7 +27,7 @@ main = do
   channels <- fetchChannels db
   let state = def { clIndex = channels def }
   (addEvent, fireEvent) <- newAddHandler
-  stepUi <- ui config fireEvent
+  stepUi <- ui fireEvent
   let stepData' = stepData fireEvent
   locutoria config state addEvent stepUi stepData'
   fireEvent GetLikeCounts
