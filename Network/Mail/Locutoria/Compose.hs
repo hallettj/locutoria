@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Network.Mail.SocialMail.Compose where
+module Network.Mail.Locutoria.Compose where
 
 import Control.Lens ((&), (.~), (^.))
 import Data.Aeson (decode, encode)
@@ -15,7 +15,7 @@ import Control.Monad (join)
 import Network.Mail.Mime (Address(..), Encoding(..), Mail(..), Part(..), addPart)
 import Network.URI (URI(..), parseURI)
 
-import Network.Mail.SocialMail.Identifiable
+import Network.Mail.Locutoria.Identifiable
 
 -- composeNote :: Address -> Text -> Mail
 

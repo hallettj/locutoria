@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Network.Mail.SocialMail.Identifiable where
+module Network.Mail.Locutoria.Identifiable where
 
 import Network.URI (URI)
 

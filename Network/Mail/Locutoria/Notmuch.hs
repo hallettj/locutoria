@@ -3,7 +3,7 @@
 
 -- This is intended to emulate the api of Foreign.Notmuch; to be used as a shim
 -- until I get that library working.
-module Network.Mail.SocialMail.Notmuch where
+module Network.Mail.Locutoria.Notmuch where
 
 import Control.Applicative ((<$>), (<*>), pure)
 import Control.Monad (mzero)
@@ -34,7 +34,7 @@ import Network.URI (URI(..))
 import System.IO
 import System.Process (CreateProcess(..), StdStream(..), createProcess, proc, readProcess)
 
-import Network.Mail.SocialMail.Identifiable
+import Network.Mail.Locutoria.Identifiable
 
 data Database = Database { dLoc :: FilePath, dMode :: DatabaseMode  }
   deriving Show

@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Network.Mail.SocialMail.Cli where
+module Network.Mail.Locutoria.Cli where
 
 import Control.Event.Handler (Handler)
 import Control.Monad (mapM_)
@@ -12,9 +12,9 @@ import Graphics.Vty.Input (Key(..), Modifier(..))
 import Graphics.Vty.Widgets.All hiding (Handler)
 import System.Exit (exitSuccess)
 
-import Network.Mail.SocialMail.Client
-import Network.Mail.SocialMail.Internal (ChannelId, ThreadInfo)
-import Network.Mail.SocialMail.Notmuch (ThreadId)
+import Network.Mail.Locutoria.Client
+import Network.Mail.Locutoria.Internal (ChannelId, ThreadInfo)
+import Network.Mail.Locutoria.Notmuch (ThreadId)
 
 type Channels = List (Maybe ChannelId) FormattedText
 type Threads  = List ThreadId FormattedText

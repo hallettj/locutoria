@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Network.Mail.SocialMail.Index where
+module Network.Mail.Locutoria.Index where
 
 import           Codec.ActivityStream.Dynamic
 import           Control.Applicative ((<$>))
@@ -11,8 +11,8 @@ import qualified Data.Map.Strict as Map
 import           Data.Text (Text, pack)
 import           Network.URI (URI(..))
 
-import Network.Mail.SocialMail.Internal
-import Network.Mail.SocialMail.Notmuch
+import Network.Mail.Locutoria.Internal
+import Network.Mail.Locutoria.Notmuch
 
 type Activities = Map MessageId [Activity]
 type LikeCounts = Map MessageId Int

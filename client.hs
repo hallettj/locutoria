@@ -4,9 +4,9 @@ module Main where
 
 import Control.Event.Handler (newAddHandler)
 
-import Network.Mail.SocialMail.Cli (stepUi, ui)
-import Network.Mail.SocialMail.Client (ClientConfig(..), ClientEvent(..), locutoria, stepData)
-import Network.Mail.SocialMail.Notmuch (Database(..), DatabaseMode(..))
+import Network.Mail.Locutoria.Cli (stepUi, ui)
+import Network.Mail.Locutoria.Client (ClientConfig(..), ClientEvent(..), locutoria, stepData)
+import Network.Mail.Locutoria.Notmuch (Database(..), DatabaseMode(..))
 
 config :: ClientConfig
 config = ClientConfig db

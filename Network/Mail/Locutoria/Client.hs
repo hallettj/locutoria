@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Network.Mail.SocialMail.Client where
+module Network.Mail.Locutoria.Client where
 
 import           Control.Applicative ((<$>))
 import           Control.Event.Handler (AddHandler, Handler)
@@ -14,10 +14,10 @@ import           Data.Text (Text, unpack)
 import           Reactive.Banana (Moment, compile, filterE, mapAccum, spill)
 import           Reactive.Banana.Frameworks (Frameworks, actuate, fromAddHandler, reactimate)
 
-import           Network.Mail.SocialMail.Index
-import qualified Network.Mail.SocialMail.Index as Index
-import           Network.Mail.SocialMail.Internal
-import           Network.Mail.SocialMail.Notmuch
+import           Network.Mail.Locutoria.Index
+import qualified Network.Mail.Locutoria.Index as Index
+import           Network.Mail.Locutoria.Internal
+import           Network.Mail.Locutoria.Notmuch
 
 data ClientConfig = ClientConfig
   { clDb :: Database

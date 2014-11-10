@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Network.Mail.SocialMail.Internal where
+module Network.Mail.Locutoria.Internal where
 
 import Codec.ActivityStream.Dynamic
 import Control.Applicative ((<$>), (<*>))
@@ -16,9 +16,9 @@ import qualified Data.Text.IO as TIO
 import Data.Text.ICU (MatchOption(..), Regex, find, group, regex)
 -- import Foreign.Notmuch
 import Network.URI (URI, parseURI)
-import Network.Mail.SocialMail.Notmuch
+import Network.Mail.Locutoria.Notmuch
 import Network.Mail.Mime (Address(..), Mail(..), emptyMail, renderSendMailCustom)
-import Network.Mail.SocialMail.Compose
+import Network.Mail.Locutoria.Compose
 
 type ChannelId = Text
 type ThreadInfo = (ThreadId, Text, Int, Bool)

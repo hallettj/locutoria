@@ -13,10 +13,10 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Network.Mail.SocialMail.Compose,
-                       Network.Mail.SocialMail.Identifiable,
-                       Network.Mail.SocialMail.Notmuch
-  --other-modules:       Network.Mail.SocialMail.Internal
+  exposed-modules:     Network.Mail.Locutoria.Compose,
+                       Network.Mail.Locutoria.Identifiable,
+                       Network.Mail.Locutoria.Notmuch
+  --other-modules:       Network.Mail.Locutoria.Internal
   build-depends:       base >=4.7 && <4.8,
                        activitystreams-aeson,
                        aeson,
