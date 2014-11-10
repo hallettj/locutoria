@@ -53,6 +53,7 @@ executable client
                        reactive-banana,
                        text,
                        text-icu,
+                       unix,
                        unordered-containers,
                        vector,
                        vty >=5.0.0,

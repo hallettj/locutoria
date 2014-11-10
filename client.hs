@@ -4,6 +4,7 @@ module Main where
 
 import Control.Event.Handler (newAddHandler)
 import Data.Default (def)
+import System.Posix.Signals (Handler(Catch), installHandler, sigINT)
 
 import Network.Mail.Locutoria.Cli (ui)
 import Network.Mail.Locutoria.Client ( ClientConfig(..)
@@ -40,4 +41,5 @@ main = do
   stepUi <- ui fireEvent
   let stepData' = stepData fireEvent
   locutoria c state addEvent stepUi stepData'
-  fireEvent GetLikeCounts
+  _ <- installHandler sigINT (Catch (fireEvent ClientExit)) Nothing
+  return ()
