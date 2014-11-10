@@ -5,10 +5,11 @@ module Network.Mail.Locutoria.Index where
 import           Codec.ActivityStream.Dynamic
 import           Control.Applicative ((<$>))
 import           Control.Monad (join)
-import           Data.List (foldl', nub, takeWhile)
+import           Data.Default (Default, def)
+import           Data.List (foldl', nub)
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import           Data.Text (Text, pack)
+import           Data.Text (pack)
 import           Network.URI (URI(..))
 
 import Network.Mail.Locutoria.Internal
@@ -25,24 +26,24 @@ data Index = Index
   , iThreads    :: Threads
   }
 
-empty :: Index
-empty = Index
-  { iActivities = Map.empty
-  , iChannels   = []
-  , iLikeCounts = Map.empty
-  , iThreads    = Map.empty
-  }
+instance Default Index where
+  def = Index
+    { iActivities = Map.empty
+    , iChannels   = []
+    , iLikeCounts = Map.empty
+    , iThreads    = Map.empty
+    }
 
-fetchChannels :: Database -> Index -> IO (Index -> Index)
-fetchChannels db index = do
+fetchChannels :: Database -> IO (Index -> Index)
+fetchChannels db = do
   addrs <- getListAddrs db
-  return $ \index' -> index' { iChannels = addrs }
+  return $ \index -> index { iChannels = addrs }
 
-fetchThreads :: Database -> Index -> [ChannelId] -> IO (Index -> Index)
-fetchThreads db index chans = do
+fetchThreads :: Database -> [ChannelId] -> IO (Index -> Index)
+fetchThreads db chans = do
   ts <- mapM (getThreads db) chans
   let tmap = Map.fromList (zip chans ts)
-  return $ \index' -> index' { iThreads = tmap }
+  return $ \index -> index { iThreads = tmap }
 
 fetchLikeCounts :: Database -> Index -> IO (Index -> Index)
 fetchLikeCounts db index = do

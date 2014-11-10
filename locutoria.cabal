@@ -43,6 +43,7 @@ executable client
                        bytestring,
                        case-insensitive,
                        containers,
+                       data-default,
                        datetime,
                        lens,
                        mime,

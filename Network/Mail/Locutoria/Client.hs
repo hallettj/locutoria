@@ -5,17 +5,13 @@ module Network.Mail.Locutoria.Client where
 
 import           Control.Applicative ((<$>))
 import           Control.Event.Handler (AddHandler, Handler)
-import           Control.Monad (join, mapM)
-import           Data.List (foldl')
-import           Data.Map.Strict ((!), Map)
-import qualified Data.Map.Strict as Map
+import           Data.Default (Default, def)
+import           Data.Map.Strict ((!))
 import           Data.Maybe (catMaybes)
-import           Data.Text (Text, unpack)
-import           Reactive.Banana (Moment, compile, filterE, mapAccum, spill)
+import           Reactive.Banana (Moment, compile, mapAccum, spill)
 import           Reactive.Banana.Frameworks (Frameworks, actuate, fromAddHandler, reactimate)
 
 import           Network.Mail.Locutoria.Index
-import qualified Network.Mail.Locutoria.Index as Index
 import           Network.Mail.Locutoria.Internal
 import           Network.Mail.Locutoria.Notmuch
 
@@ -37,8 +33,8 @@ data ClientEvent = GetChannels
 
 data Response = DataResp DataEvent | UiResp UiEvent
 
-data DataEvent = FetchChannels Database Index
-               | FetchThreads Database Index [ChannelId]
+data DataEvent = FetchChannels Database
+               | FetchThreads Database [ChannelId]
                | FetchLikeCounts Database Index
 
 data UiEvent = RenderChannels [ChannelId]
@@ -46,46 +42,52 @@ data UiEvent = RenderChannels [ChannelId]
              | UiExit
   deriving Show
 
+instance Default ClientState where
+  def = ClientState
+    { clIndex           = def
+    , clSelectedChannel = Nothing
+    }
+
 locutoria :: ClientConfig
+          -> ClientState
           -> AddHandler ClientEvent
-          -> Handler ClientEvent
           -> Handler UiEvent
           -> Handler DataEvent
           -> IO ()
-locutoria config addEvent fireEvent stepUi stepData = do
+locutoria config initState addEvent stepUi stepData' = do
   network <- compile $
-    networkDescription config addEvent fireEvent stepUi stepData
+    networkDescription config initState addEvent stepUi stepData'
   actuate network
 
 networkDescription :: forall t. Frameworks t => ClientConfig
+                                       -> ClientState
                                        -> AddHandler ClientEvent
-                                       -> Handler ClientEvent
                                        -> Handler UiEvent
                                        -> Handler DataEvent
                                        -> Moment t ()
-networkDescription config addEvent fire stepUi stepData = do
+networkDescription config initState addEvent stepUi stepData' = do
   clientEvents <- fromAddHandler addEvent
   let
-    responseActions        = fmap (step config) clientEvents
-    (responseLists, state) = mapAccum initState responseActions
-    responses              = spill responseLists
+    responseActions    = fmap (step config) clientEvents
+    (responseLists, _) = mapAccum initState responseActions
+    responses          = spill responseLists
   reactimate $ fmap (\e -> case e of
-    DataResp e' -> stepData e'
+    DataResp e' -> stepData' e'
     UiResp e'   -> stepUi e'
     ) responses
 
 step :: ClientConfig -> ClientEvent -> ClientState -> ([Response], ClientState)
 step conf event s = case event of
   GetChannels ->
-    ([DataResp (FetchChannels db index)], s)
+    ([DataResp (FetchChannels db)], s)
 
   GetThreads chan ->
-    ([DataResp (FetchThreads db index [chan])], s)
+    ([DataResp (FetchThreads db [chan])], s)
 
   GetAllThreads ->
     let cs = iChannels index
     in
-    ([DataResp (FetchThreads db index cs)], s)
+    ([DataResp (FetchThreads db cs)], s)
 
   GetLikeCounts ->
     ([DataResp (FetchLikeCounts db index)], s)
@@ -105,23 +107,17 @@ step conf event s = case event of
 
 stepData :: Handler ClientEvent -> Handler DataEvent
 stepData fire e = case e of
-  FetchChannels db index -> do
-    index' <- fetchChannels db index
+  FetchChannels db -> do
+    index' <- fetchChannels db
     fire (IndexUpdate index')
 
-  FetchThreads db index chans -> do
-    index' <- fetchThreads db index chans
+  FetchThreads db chans -> do
+    index' <- fetchThreads db chans
     fire (IndexUpdate index')
 
   FetchLikeCounts db index -> do
     index' <- fetchLikeCounts db index
     fire (IndexUpdate index')
-
-initState :: ClientState
-initState = ClientState
-  { clIndex           = Index.empty
-  , clSelectedChannel = Nothing
-  }
 
 updateUi :: ClientState -> [Response]
 updateUi s = map UiResp $ catMaybes
