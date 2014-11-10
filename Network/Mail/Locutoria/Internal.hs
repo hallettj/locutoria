@@ -4,31 +4,29 @@ module Network.Mail.Locutoria.Internal where
 
 import Codec.ActivityStream.Dynamic
 import Control.Applicative ((<$>), (<*>))
-import Control.Lens ((&), (.~), (^.))
-import Control.Monad (join, mapM)
+import Control.Lens ((^.))
+import Control.Monad (join)
 import Data.Aeson (decode)
 import Data.DateTime (getCurrentTime)
 import Data.List (nub)
-import Data.Maybe (catMaybes, fromJust)
+import Data.Maybe (catMaybes)
 import Data.Text (Text, pack, unpack)
-import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
 import Data.Text.ICU (MatchOption(..), Regex, find, group, regex)
 -- import Foreign.Notmuch
+import Prelude hiding (recip)
+
 import Network.URI (URI, parseURI)
 import Network.Mail.Locutoria.Notmuch
 import Network.Mail.Mime (Address(..), Mail(..), emptyMail, renderSendMailCustom)
 import Network.Mail.Locutoria.Compose
 
+
+
 type ChannelId = Text
 type ThreadInfo = (ThreadId, Text, Int, Bool)
 
-fromList :: Database -> IO Query
-fromList db = queryCreate db "to:lists.galois.com"
-
-getListAddrs :: Database -> IO [Text]
-getListAddrs db = do
-  query <- fromList db
+getListAddrs :: Query -> IO [Text]
+getListAddrs query = do
   ts <- queryThreads query
   ls <- fmap concat (mapM threadGetRecipients ts)
   return $ nub (catMaybes (map parseListAddr ls))

@@ -34,9 +34,9 @@ instance Default Index where
     , iThreads    = Map.empty
     }
 
-fetchChannels :: Database -> IO (Index -> Index)
-fetchChannels db = do
-  addrs <- getListAddrs db
+fetchChannels :: Query -> IO (Index -> Index)
+fetchChannels q = do
+  addrs <- getListAddrs q
   return $ \index -> index { iChannels = addrs }
 
 fetchThreads :: Database -> [ChannelId] -> IO (Index -> Index)

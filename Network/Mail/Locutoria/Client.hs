@@ -16,7 +16,8 @@ import           Network.Mail.Locutoria.Internal
 import           Network.Mail.Locutoria.Notmuch
 
 data ClientConfig = ClientConfig
-  { clDb :: Database
+  { clDb    :: Database
+  , clQuery :: Query
   }
 
 data ClientState = ClientState
@@ -33,7 +34,7 @@ data ClientEvent = GetChannels
 
 data Response = DataResp DataEvent | UiResp UiEvent
 
-data DataEvent = FetchChannels Database
+data DataEvent = FetchChannels Query
                | FetchThreads Database [ChannelId]
                | FetchLikeCounts Database Index
 
@@ -79,7 +80,7 @@ networkDescription config initState addEvent stepUi stepData' = do
 step :: ClientConfig -> ClientEvent -> ClientState -> ([Response], ClientState)
 step conf event s = case event of
   GetChannels ->
-    ([DataResp (FetchChannels db)], s)
+    ([DataResp (FetchChannels q)], s)
 
   GetThreads chan ->
     ([DataResp (FetchThreads db [chan])], s)
@@ -102,13 +103,14 @@ step conf event s = case event of
     ([UiResp UiExit], s)
 
   where
-    db    = clDb conf
+    db    = clDb    conf
+    q     = clQuery conf
     index = clIndex s
 
 stepData :: Handler ClientEvent -> Handler DataEvent
 stepData fire e = case e of
-  FetchChannels db -> do
-    index' <- fetchChannels db
+  FetchChannels q -> do
+    index' <- fetchChannels q
     fire (IndexUpdate index')
 
   FetchThreads db chans -> do
