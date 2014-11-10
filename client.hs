@@ -38,8 +38,8 @@ main = do
   channels <- fetchChannels (clQuery c)
   let state = def { clIndex = channels def }
   (addEvent, fireEvent) <- newAddHandler
-  stepUi <- ui fireEvent
+  (stepUi, runUi) <- ui fireEvent
   let stepData' = stepData fireEvent
   locutoria c state addEvent stepUi stepData'
   _ <- installHandler sigINT (Catch (fireEvent ClientExit)) Nothing
-  return ()
+  runUi

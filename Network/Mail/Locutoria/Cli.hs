@@ -16,7 +16,7 @@ import Network.Mail.Locutoria.Notmuch (ThreadId)
 type Channels = List (Maybe ChannelId) FormattedText
 type Threads  = List ThreadId FormattedText
 
-ui :: Handler ClientEvent -> IO (Handler UiEvent)
+ui :: Handler ClientEvent -> IO (Handler UiEvent, IO ())
 ui fireClientEvent = do
   channels <- newList 1
   threads <- newList 2
@@ -49,9 +49,7 @@ ui fireClientEvent = do
       Just ev -> fireClientEvent ev
       Nothing -> return ()
 
-  runUi c defaultContext
-
-  return $ stepUi channels threads
+  return $ (stepUi channels threads, runUi c defaultContext)
 
 stepUi :: Widget Channels -> Widget Threads -> Handler UiEvent
 stepUi channels threads e = case e of
