@@ -6,32 +6,17 @@
 module Network.Mail.Locutoria.Notmuch where
 
 import Control.Applicative ((<$>), (<*>), pure)
-import Control.Monad (mzero)
--- import Codec.MIME.Parse (parseMIMEMessage)
--- import Codec.MIME.Type (MIMEParam(..), MIMEValue(..))
 import           Data.Aeson ( FromJSON(..)
-                            , ToJSON(..)
-                            , Value
-                            , fromJSON
-                            , object
-                            , (.=)
                             , (.:)
-                            , (.:?)
                             )
 import qualified Data.Aeson as Ae
-import Data.Aeson.TH
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.HashMap.Strict as HM
-import Data.CaseInsensitive (mk)
--- import Data.Char (ord)
-import Data.Maybe (catMaybes, fromJust)
-import Data.Text (Text, pack, unpack)
-import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
+import Data.Maybe (catMaybes)
+import Data.Text (Text, unpack)
 import Data.Vector ((!))
 import qualified Data.Vector as V
 import Network.URI (URI(..))
-import System.IO
 import System.Process (CreateProcess(..), StdStream(..), createProcess, proc, readProcess)
 
 import Network.Mail.Locutoria.Identifiable
@@ -48,7 +33,7 @@ data Query = Query { qDb :: Database, qText :: String }
 
 type ThreadId = String
 data Thread = Thread { tId :: ThreadId }
-  deriving Eq
+  deriving (Eq, Show)
 
 type MessageId = Text
 
@@ -71,12 +56,13 @@ threadGetRecipients = threadGetHeaderValues "To"
 
 threadGetMessages :: Thread -> IO [MsgThread]
 threadGetMessages t = do
-  out <- notmuchBS ["show", "--format=json", "--body=false", tId t]
+  -- out <- notmuchBS ["show", "--format=json", "--body=false", tId t]
+  out <- notmuchBS ["show", "--format=json", tId t]
   let parsed = Ae.eitherDecode out :: Either String [[MsgThread]]
   case parsed of
     Left err -> putStrLn err >> return []
-    Right t ->
-      return $ head t
+    Right ts ->
+      return $ head ts
 
 threadGetHeaderValues :: Text -> Thread -> IO [Text]
 threadGetHeaderValues h t = do
@@ -150,7 +136,8 @@ instance FromJSON MessagePart where
       content = HM.lookup "content" o
       subparts = case content of
         Just ps@(Ae.Array _) -> parseJSON ps
-        Nothing -> pure []
+        Just _               -> pure []
+        Nothing              -> pure []
 
   parseJSON _ = fail "error parsing MessagePart: expected object"
 

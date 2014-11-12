@@ -20,8 +20,6 @@ import Network.Mail.Locutoria.Notmuch
 import Network.Mail.Mime (Address(..), Mail(..), emptyMail, renderSendMailCustom)
 import Network.Mail.Locutoria.Compose
 
-
-
 type ChannelId = Text
 type ThreadInfo = (ThreadId, Text, Int, Bool)
 

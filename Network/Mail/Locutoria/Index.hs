@@ -46,7 +46,7 @@ fetchThreads db chans = do
   return $ \index -> index { iThreads = tmap }
 
 fetchLikeCounts :: Database -> Index -> IO (Index -> Index)
-fetchLikeCounts db index = do
+fetchLikeCounts _ index = do
   let ts = join (Map.elems (iThreads index))
   likes <- join <$> mapM (getLikes . toThread) ts
   let likes' = nub likes

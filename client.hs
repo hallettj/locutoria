@@ -33,13 +33,12 @@ listTraffic = queryCreate db "to:lists.galois.com"
 
 main :: IO ()
 main = do
-  putStrLn ("Indexing mail in " ++ dLoc db ++ " ...")
-  c        <- config
-  channels <- fetchChannels (clQuery c)
-  let state = def { clIndex = channels def }
+  c <- config
   (addEvent, fireEvent) <- newAddHandler
   (stepUi, runUi) <- ui fireEvent
   let stepData' = stepData fireEvent
-  locutoria c state addEvent stepUi stepData'
+  locutoria c addEvent stepUi stepData'
   _ <- installHandler sigINT (Catch (fireEvent ClientExit)) Nothing
+  putStrLn ("Indexing mail in " ++ dLoc db ++ " ...")
+  fireEvent Refresh
   runUi

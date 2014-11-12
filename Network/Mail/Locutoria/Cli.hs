@@ -67,8 +67,7 @@ globalControls _ key _ =
 channelControls :: Widget a -> Key -> [Modifier] -> Maybe ClientEvent
 channelControls _ key _ =
   if key == KChar '@' then
-    -- Just GetChannels
-    Just GetLikeCounts
+    Just Refresh
   else
     Nothing
 
@@ -112,8 +111,9 @@ threadControls_ threads _ key mods = case (key, mods) of
     return False
 
 channelSelection :: SelectionEvent (Maybe ChannelId) b -> Maybe ClientEvent
-channelSelection (SelectionOn 0 _ _) = Just GetAllThreads
-channelSelection (SelectionOn _ channel _) = fmap GetThreads channel
+channelSelection (SelectionOn 0 _              _) = Just (SetChannel Nothing)
+channelSelection (SelectionOn _ (Just channel) _) = Just (SetChannel (Just channel))
+channelSelection (SelectionOn _ Nothing        _) = Nothing
 channelSelection SelectionOff = Nothing
 
 renderChannels :: Widget Channels -> [Text] -> IO ()
