@@ -5,6 +5,7 @@ module Network.Mail.Locutoria.Client where
 
 import           Control.Applicative ((<$>))
 import           Control.Event.Handler (AddHandler, Handler)
+import           Control.Monad (mplus)
 import           Data.Default (Default, def)
 import qualified Data.Map.Strict as Map
 import           Data.Maybe (catMaybes)
@@ -94,11 +95,11 @@ step conf event s = case event of
   SetChannel chan ->
     let s' = s { clSelectedChannel = chan }
     in
-    ([], s')
+    (updateUi s s', s')
 
   IndexUpdate f ->
     let index' = f index
-        s' = s { clIndex = index' }
+        s' = s { clIndex = index', clRefreshing = False }
     in
     (updateUi s s', s')
 
@@ -126,17 +127,19 @@ stepData fire e = case e of
 
 updateUi :: ClientState -> ClientState -> [Response]
 updateUi prevState state = map UiResp $ catMaybes
-  [ RenderChannels <$> changed iChannels
+  [ RenderChannels <$> iChanged iChannels
   , RenderThreads  <$> threads
   ]
   where
-    changed f = if (f prevIdx /= f idx) then Just (f idx) else Nothing
-    idx       = clIndex state
-    prevIdx   = clIndex prevState
-    threads   = do
-      threadsMap <- changed iThreads
-      curChan    <- clSelectedChannel state
-      Map.lookup curChan threadsMap
+    iChanged f = if (f prevIdx /= f idx) then Just (f idx) else Nothing
+    sChanged f = if (f prevState /= f state) then Just (f state) else Nothing
+    idx        = clIndex state
+    prevIdx    = clIndex prevState
+    threadsChanged = (const True <$> iChanged iThreads) `mplus` (const True <$> sChanged clSelectedChannel)
+    threads    = do
+      _       <- threadsChanged
+      curChan <- clSelectedChannel state
+      Map.lookup curChan (iThreads idx)
 
 instance Show ClientEvent where
   show Refresh           = "Refresh"
