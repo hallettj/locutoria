@@ -14,11 +14,11 @@ import           Reactive.Banana.Frameworks (Frameworks, actuate, fromAddHandler
 
 import           Network.Mail.Locutoria.Index
 import           Network.Mail.Locutoria.Internal
+import           Network.Mail.Locutoria.MailingList
 import           Network.Mail.Locutoria.Notmuch
 
 data ClientConfig = ClientConfig
   { clDb    :: Database
-  , clQuery :: Query
   }
 
 data ClientState = ClientState
@@ -34,11 +34,11 @@ data ClientEvent = Refresh
 
 data Response = DataResp DataEvent | UiResp UiEvent
 
-data DataEvent = FetchChannels Query
-               | FetchThreads Database [ChannelId]
+data DataEvent = FetchChannels Database
+               | FetchThreads Database [MailingList]
                | FetchLikeCounts Database Index
 
-data UiEvent = RenderChannels [ChannelId]
+data UiEvent = RenderChannels [MailingList]
              | RenderThreads [ThreadInfo]
              | UiExit
   deriving Show
@@ -81,13 +81,13 @@ step :: ClientConfig -> ClientEvent -> ClientState -> ([Response], ClientState)
 step conf event s = case event of
   Refresh ->
     let refreshing = clRefreshing s
-        cs = iChannels index
+        ls = iLists index
         s' = s { clRefreshing = True }
     in
     if not refreshing
     then (map DataResp
-      [ FetchChannels q
-      , FetchThreads db cs
+      [ FetchChannels db
+      , FetchThreads db ls
       , FetchLikeCounts db index
       ], s')
     else ([], s)
@@ -108,13 +108,12 @@ step conf event s = case event of
 
   where
     db    = clDb    conf
-    q     = clQuery conf
     index = clIndex s
 
 stepData :: Handler ClientEvent -> Handler DataEvent
 stepData fire e = case e of
-  FetchChannels q -> do
-    index' <- fetchChannels q
+  FetchChannels db -> do
+    index' <- fetchChannels db
     fire (IndexUpdate index')
 
   FetchThreads db chans -> do
@@ -127,7 +126,7 @@ stepData fire e = case e of
 
 updateUi :: ClientState -> ClientState -> [Response]
 updateUi prevState state = map UiResp $ catMaybes
-  [ RenderChannels <$> iChanged iChannels
+  [ RenderChannels <$> iChanged iLists
   , RenderThreads  <$> threads
   ]
   where

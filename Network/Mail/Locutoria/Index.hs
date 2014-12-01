@@ -13,6 +13,7 @@ import           Data.Text (pack)
 import           Network.URI (URI(..))
 
 import Network.Mail.Locutoria.Internal
+import Network.Mail.Locutoria.MailingList
 import Network.Mail.Locutoria.Notmuch
 
 type Activities = Map MessageId [Activity]
@@ -21,7 +22,7 @@ type Threads    = Map ChannelId [ThreadInfo]
 
 data Index = Index
   { iActivities :: Activities
-  , iChannels   :: [ChannelId]
+  , iLists      :: [MailingList]
   , iLikeCounts :: LikeCounts
   , iThreads    :: Threads
   }
@@ -29,21 +30,28 @@ data Index = Index
 instance Default Index where
   def = Index
     { iActivities = Map.empty
-    , iChannels   = []
+    , iLists      = []
     , iLikeCounts = Map.empty
     , iThreads    = Map.empty
     }
 
-fetchChannels :: Query -> IO (Index -> Index)
-fetchChannels q = do
-  addrs <- getListAddrs q
-  return $ \index -> index { iChannels = addrs }
+fetchChannels :: Database -> IO (Index -> Index)
+fetchChannels db = do
+  lists <- getMailingLists db
+  return $ \index -> index { iLists = lists }
 
-fetchThreads :: Database -> [ChannelId] -> IO (Index -> Index)
-fetchThreads db chans = do
-  ts <- mapM (getThreads db) chans
-  let tmap = Map.fromList (zip chans ts)
+fetchThreads :: Database -> [MailingList] -> IO (Index -> Index)
+fetchThreads db lists = do
+  ts <- mapM (fetchListThreads db) lists
+  let tmap = Map.fromList (zip (map mlId lists) ts)
   return $ \index -> index { iThreads = tmap }
+
+fetchListThreads :: Database -> MailingList -> IO [ThreadInfo]
+fetchListThreads db list = do
+  let postUris  = filter (\u -> uriScheme u == "mailto:") (mlPost list)
+  let postAddrs = map (pack . uriPath) postUris
+  threadLists <- mapM (getThreads db) postAddrs
+  return $ join threadLists
 
 fetchLikeCounts :: Database -> Index -> IO (Index -> Index)
 fetchLikeCounts _ index = do
@@ -65,4 +73,4 @@ likeCount :: Index -> MessageId -> Int
 likeCount index mId = Map.findWithDefault 0 mId (iLikeCounts index)
 
 toThread :: ThreadInfo -> Thread
-toThread (tId, _, _, _) = Thread tId
+toThread (threadId, _, _, _) = Thread threadId

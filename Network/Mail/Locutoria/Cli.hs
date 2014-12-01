@@ -4,13 +4,14 @@ module Network.Mail.Locutoria.Cli where
 
 import Control.Event.Handler (Handler)
 import Data.Maybe (fromMaybe)
-import Data.Text (Text, append, pack)
+import Data.Text (append, pack)
 import Graphics.Vty.Input (Key(..), Modifier(..))
 import Graphics.Vty.Widgets.All hiding (Handler)
 import System.Exit (exitSuccess)
 
 import Network.Mail.Locutoria.Client
 import Network.Mail.Locutoria.Internal (ChannelId, ThreadInfo)
+import Network.Mail.Locutoria.MailingList (MailingList(..))
 import Network.Mail.Locutoria.Notmuch (ThreadId)
 
 type Channels = List (Maybe ChannelId) FormattedText
@@ -53,7 +54,7 @@ ui fireClientEvent = do
 
 stepUi :: Widget Channels -> Widget Threads -> Handler UiEvent
 stepUi channels threads e = case e of
-  RenderChannels cs -> renderChannels channels cs
+  RenderChannels ls -> renderChannels channels ls
   RenderThreads ts -> renderThreads threads ts
   UiExit -> exitSuccess
 
@@ -116,10 +117,11 @@ channelSelection (SelectionOn _ (Just channel) _) = Just (SetChannel (Just chann
 channelSelection (SelectionOn _ Nothing        _) = Nothing
 channelSelection SelectionOff = Nothing
 
-renderChannels :: Widget Channels -> [Text] -> IO ()
-renderChannels channels cs = do
-  widgets <- mapM plainText ("all" : "" : cs)
-  let ids = Nothing : Nothing : map Just cs
+renderChannels :: Widget Channels -> [MailingList] -> IO ()
+renderChannels channels ls = do
+  let mlIds = map mlId ls
+  widgets <- mapM plainText ("all" : "" : mlIds)
+  let ids = Nothing : Nothing : map Just mlIds
   clearList channels
   mapM_ (uncurry (addToList channels)) (zip ids widgets)
 

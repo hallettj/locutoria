@@ -13,20 +13,13 @@ import Network.Mail.Locutoria.Client ( ClientConfig(..)
                                      )
 import Network.Mail.Locutoria.Notmuch ( Database(..)
                                       , DatabaseMode(..)
-                                      , Query
-                                      , queryCreate
                                       )
 
 config :: IO ClientConfig
-config = do
-  q <- listTraffic
-  return $ ClientConfig db q
+config = return $ ClientConfig db
 
 db :: Database
 db = Database "/home/jesse/mail/galois" DatabaseModeReadOnly
-
-listTraffic :: IO Query
-listTraffic = queryCreate db "to:lists.galois.com"
 
 main :: IO ()
 main = do

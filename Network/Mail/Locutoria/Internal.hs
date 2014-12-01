@@ -8,10 +8,8 @@ import Control.Lens ((^.))
 import Control.Monad (join)
 import Data.Aeson (decode)
 import Data.DateTime (getCurrentTime)
-import Data.List (nub)
 import Data.Maybe (catMaybes)
 import Data.Text (Text, pack, unpack)
-import Data.Text.ICU (MatchOption(..), Regex, find, group, regex)
 -- import Foreign.Notmuch
 import Prelude hiding (recip)
 
@@ -22,18 +20,6 @@ import Network.Mail.Locutoria.Compose
 
 type ChannelId = Text
 type ThreadInfo = (ThreadId, Text, Int, Bool)
-
-getListAddrs :: Query -> IO [Text]
-getListAddrs query = do
-  ts <- queryThreads query
-  ls <- fmap concat (mapM threadGetRecipients ts)
-  return $ nub (catMaybes (map parseListAddr ls))
-
-parseListAddr :: Text -> Maybe Text
-parseListAddr l = find listAddrExp l >>= group 0
-
-listAddrExp :: Regex
-listAddrExp = regex [CaseInsensitive] "[a-z]+@lists.galois.com"
 
 compose :: IO ()
 compose = do
