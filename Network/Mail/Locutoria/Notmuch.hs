@@ -77,17 +77,17 @@ flatThread = (>>= tMsgs)
     tMsgs t = mtMsg t : flatThread (mtReplies t)
 
 notmuch :: [String] -> IO String
-notmuch args = readProcess "/usr/bin/notmuch" opts ""
+notmuch args = readProcess "/usr/bin/env" opts ""
   where
-    opts = ["--config=/home/jesse/.notmuch-galois"] ++ args
+    opts = ["notmuch", "--config=/home/jesse/.notmuch-galois"] ++ args
 
 notmuchBS :: [String] -> IO BS.ByteString
 notmuchBS args = do
   (_, Just hout, _, _) <-
-    createProcess (proc "/usr/bin/notmuch" opts) { std_out = CreatePipe }
+    createProcess (proc "/usr/bin/env" opts) { std_out = CreatePipe }
   BS.hGetContents hout
   where
-    opts = ["--config=/home/jesse/.notmuch-galois"] ++ args
+    opts = ["notmuch", "--config=/home/jesse/.notmuch-galois"] ++ args
 
 
 data MsgThread = MsgThread

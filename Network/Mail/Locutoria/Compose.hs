@@ -3,23 +3,22 @@
 
 module Network.Mail.Locutoria.Compose where
 
-import Control.Lens ((&), (.~), (^.))
-import Data.Aeson (decode, encode)
-import qualified Data.ByteString.Lazy as BS
-import Data.DateTime (DateTime)
-import Data.Maybe (catMaybes, fromJust)
-import Data.Monoid ((<>))
-import Data.Text (Text)
+import           Control.Lens ((&), (.~), (^.))
+import           Data.Aeson (decode, encode)
+import           Data.DateTime (DateTime)
+import           Data.Maybe (catMaybes, fromJust)
+import           Data.Monoid ((<>))
+import           Data.String (fromString)
+import           Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Text.Lazy (fromChunks)
-import Data.Text.Lazy.Encoding (encodeUtf8)
-import Codec.ActivityStream.Dynamic
-import Control.Monad (join)
-import Network.Mail.Mime (Address(..), Encoding(..), Mail(..), Part(..), addPart)
-import Network.Mail.Mime.Parser (ParseError, parseMessage)
-import Network.URI (URI(..), parseURI)
-import System.IO.Temp (withSystemTempFile)
-import System.Process (createProcess, proc)
+import           Data.Text.Lazy (fromChunks)
+import           Data.Text.Lazy.Encoding (encodeUtf8)
+import           Codec.ActivityStream.Dynamic
+import           Control.Monad (join)
+import           Network.Mail.Mime (Address(..), Encoding(..), Mail(..), Part(..), addPart)
+import           Network.Mail.Mime.Parser (ParseError, parseMessage)
+import           Network.URI (URI(..), parseURI)
+import           System.Process (readProcess)
 
 import Network.Mail.Locutoria.Identifiable
 import Network.Mail.Locutoria.Notmuch
@@ -34,18 +33,10 @@ data MessageParams = MessageParams
 
 composeReply :: SearchTerm -> IO (Either ParseError Mail)
 composeReply term = do
-  template <- notmuchBS ["reply", Text.unpack term]
-  editor   <- sensibleEditor
-  msg <- withSystemTempFile "compose.markdown" $ \path hMsg -> do
-    BS.hPut hMsg template
-    (_, _, _, _) <-
-      createProcess (proc editor [path])
-    BS.hGetContents hMsg
-  return $ parseMessage "message" msg
-
-sensibleEditor :: IO String
-sensibleEditor = return "/usr/bin/sensible-editor"
--- TODO: Check $VISUAL and $EDITOR environment variables
+  template <- notmuch ["reply", Text.unpack term]
+  msg      <- readProcess "/usr/bin/env" ["vipe", ".markdown"] template
+  let bs = encodeUtf8 (fromString msg)
+  return $ parseMessage "message" bs
 
 addActivity :: Activity -> Mail -> Mail
 addActivity act = addPart (catMaybes [fallbackPart act, Just (activityPart act)])
