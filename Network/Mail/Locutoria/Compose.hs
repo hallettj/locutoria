@@ -15,7 +15,11 @@ import           Data.Text.Lazy (fromChunks)
 import           Data.Text.Lazy.Encoding (encodeUtf8)
 import           Codec.ActivityStream.Dynamic
 import           Control.Monad (join)
-import           Network.Mail.Mime (Address(..), Encoding(..), Mail(..), Part(..), addPart)
+import           Network.Mail.Mime ( Address(..)
+                                   , Encoding(..)
+                                   , Mail(..)
+                                   , Part(..)
+                                   , addPart, renderMail', sendmailCustom)
 import           Network.Mail.Mime.Parser (ParseError, parseMessage)
 import           Network.URI (URI(..), parseURI)
 import           System.Process (readProcess)
@@ -30,6 +34,11 @@ data MessageParams = MessageParams
   }
   deriving Show
 
+send :: Mail -> IO ()
+send mail = renderMail' mail >>= (\bs -> sendmailCustom "/usr/bin/env"
+  [ "msmtp"
+  , "--read-envelope-from"
+  , "--read-recipients"] bs)
 
 composeReply :: SearchTerm -> IO (Either ParseError Mail)
 composeReply term = do

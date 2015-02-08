@@ -27,7 +27,7 @@ main = do
   (addEvent, fireEvent) <- newAddHandler
   (stepUi, runUi) <- ui fireEvent
   let stepData' = stepData fireEvent
-  locutoria c addEvent stepUi stepData'
+  locutoria c addEvent fireEvent stepUi stepData'
   _ <- installHandler sigINT (Catch (fireEvent ClientExit)) Nothing
   putStrLn ("Indexing mail in " ++ dLoc db ++ " ...")
   fireEvent Refresh

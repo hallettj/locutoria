@@ -9,9 +9,11 @@ import           Control.Monad (mplus)
 import           Data.Default (Default, def)
 import qualified Data.Map.Strict as Map
 import           Data.Maybe (catMaybes)
+import qualified Data.Text as Text
 import           Reactive.Banana (Moment, compile, mapAccum, spill)
 import           Reactive.Banana.Frameworks (Frameworks, actuate, fromAddHandler, reactimate)
 
+import           Network.Mail.Locutoria.Compose
 import           Network.Mail.Locutoria.Index
 import           Network.Mail.Locutoria.Internal
 import           Network.Mail.Locutoria.MailingList
@@ -28,12 +30,14 @@ data ClientState = ClientState
   }
 
 data ClientEvent = Refresh
-                 | Compose
+                 | ComposeReply ThreadId
                  | SetChannel (Maybe ChannelId)
                  | IndexUpdate (Index -> Index)
                  | ClientExit
 
-data Response = DataResp DataEvent | UiResp UiEvent
+data Response = DataResp DataEvent
+              | UiResp UiEvent
+              | Action (Handler ClientEvent -> IO ())
 
 data DataEvent = FetchChannels Database
                | FetchThreads Database [MailingList]
@@ -53,20 +57,22 @@ instance Default ClientState where
 
 locutoria :: ClientConfig
           -> AddHandler ClientEvent
+          -> Handler ClientEvent
           -> Handler UiEvent
           -> Handler DataEvent
           -> IO ()
-locutoria config addEvent stepUi stepData' = do
+locutoria config addEvent fireClientEvent stepUi stepData' = do
   network <- compile $
-    networkDescription config addEvent stepUi stepData'
+    networkDescription config addEvent fireClientEvent stepUi stepData'
   actuate network
 
 networkDescription :: forall t. Frameworks t => ClientConfig
                                        -> AddHandler ClientEvent
+                                       -> Handler ClientEvent
                                        -> Handler UiEvent
                                        -> Handler DataEvent
                                        -> Moment t ()
-networkDescription config addEvent stepUi stepData' = do
+networkDescription config addEvent fireClientEvent stepUi stepData' = do
   clientEvents <- fromAddHandler addEvent
   let
     initState          = def
@@ -76,6 +82,7 @@ networkDescription config addEvent stepUi stepData' = do
   reactimate $ fmap (\e -> case e of
     DataResp e' -> stepData' e'
     UiResp e'   -> stepUi e'
+    Action io   -> io fireClientEvent
     ) responses
 
 step :: ClientConfig -> ClientEvent -> ClientState -> ([Response], ClientState)
@@ -104,12 +111,19 @@ step conf event s = case event of
     in
     (updateUi s s', s')
 
+  ComposeReply tId -> action s $ \fire -> do
+    msg <- composeReply (Text.pack tId)
+    case msg of
+      Left _     -> return ()  -- TODO: report error
+      Right mail -> send mail >> fire Refresh
+
   ClientExit ->
     ([UiResp UiExit], s)
 
   where
     db    = clDb    conf
     index = clIndex s
+    action s_ io = ([Action io], s_)
 
 stepData :: Handler ClientEvent -> Handler DataEvent
 stepData fire e = case e of
@@ -142,7 +156,8 @@ updateUi prevState state = map UiResp $ catMaybes
       Map.lookup curChan (iThreads idx)
 
 instance Show ClientEvent where
-  show Refresh           = "Refresh"
-  show (SetChannel chan) = "SetChannel " ++ show chan
-  show (IndexUpdate _)   = "IndexUpdate"
-  show ClientExit        = "ClientExit"
+  show Refresh            = "Refresh"
+  show (SetChannel chan)  = "SetChannel " ++ show chan
+  show (IndexUpdate _)    = "IndexUpdate"
+  show (ComposeReply tId) = "ComposeReply " ++ show tId
+  show ClientExit         = "ClientExit"

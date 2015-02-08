@@ -42,6 +42,11 @@ ui fireClientEvent = do
       Just ev -> fireClientEvent ev >> return True
       Nothing -> return False
 
+  fg `onKeyPressed` \_ key modifiers ->
+    threadControls threads key modifiers >>= (\e -> case e of
+      Just ev -> fireClientEvent ev >> return True
+      Nothing -> return False)
+
   fg `onKeyPressed` (channelControls_ channels)
   fg `onKeyPressed` (threadControls_ threads)
 
@@ -88,6 +93,16 @@ channelControls_ channels _ key mods = case (key, mods) of
     return True
   _ ->
     return False
+
+threadControls :: Widget Threads -> Key -> [Modifier] -> IO (Maybe ClientEvent)
+threadControls threads key mods = case (key, mods) of
+  (KChar 'r', []) -> do
+    sel <- getSelected threads
+    return $ case sel of
+      Just (_, (tId, _)) -> Just (ComposeReply tId)
+      Nothing                  -> Nothing
+  _ ->
+    return Nothing
 
 threadControls_ :: Widget Threads -> Widget a -> Key -> [Modifier] -> IO Bool
 threadControls_ threads _ key mods = case (key, mods) of
