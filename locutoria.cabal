@@ -17,7 +17,7 @@ library
                        Network.Mail.Locutoria.Identifiable,
                        Network.Mail.Locutoria.Notmuch
   --other-modules:       Network.Mail.Locutoria.Internal
-  build-depends:       base >=4.7 && <4.8,
+  build-depends:       base >=4.7 && <5,
                        activitystreams-aeson,
                        aeson,
                        attoparsec,
@@ -30,6 +30,7 @@ library
                        mime-mail,
                        network-uri,
                        process,
+                       temporary,
                        text,
                        unordered-containers,
                        vector
@@ -37,7 +38,7 @@ library
 
 executable client
   main-is:             client.hs
-  build-depends:       base >=4.7 && <4.8,
+  build-depends:       base >=4.7 && <5,
                        activitystreams-aeson,
                        aeson,
                        bytestring,
@@ -51,6 +52,7 @@ executable client
                        network-uri,
                        process,
                        reactive-banana,
+                       temporary,
                        text,
                        text-icu,
                        unix,

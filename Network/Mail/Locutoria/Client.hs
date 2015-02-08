@@ -28,6 +28,7 @@ data ClientState = ClientState
   }
 
 data ClientEvent = Refresh
+                 | Compose
                  | SetChannel (Maybe ChannelId)
                  | IndexUpdate (Index -> Index)
                  | ClientExit

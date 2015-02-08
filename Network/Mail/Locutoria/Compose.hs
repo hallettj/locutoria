@@ -1,23 +1,51 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Network.Mail.Locutoria.Compose where
 
 import Control.Lens ((&), (.~), (^.))
 import Data.Aeson (decode, encode)
+import qualified Data.ByteString.Lazy as BS
 import Data.DateTime (DateTime)
 import Data.Maybe (catMaybes, fromJust)
 import Data.Monoid ((<>))
-import Data.Text (Text, append, pack, replace, unpack)
+import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Text.Lazy (fromChunks)
 import Data.Text.Lazy.Encoding (encodeUtf8)
 import Codec.ActivityStream.Dynamic
 import Control.Monad (join)
 import Network.Mail.Mime (Address(..), Encoding(..), Mail(..), Part(..), addPart)
+import Network.Mail.Mime.Parser (ParseError, parseMessage)
 import Network.URI (URI(..), parseURI)
+import System.IO.Temp (withSystemTempFile)
+import System.Process (createProcess, proc)
 
 import Network.Mail.Locutoria.Identifiable
+import Network.Mail.Locutoria.Notmuch
 
--- composeNote :: Address -> Text -> Mail
+data MessageParams = MessageParams
+  { msgFrom :: Maybe Address
+  , msgTo :: Maybe Address
+  , msgSubject :: Maybe Text
+  }
+  deriving Show
+
+
+composeReply :: SearchTerm -> IO (Either ParseError Mail)
+composeReply term = do
+  template <- notmuchBS ["reply", Text.unpack term]
+  editor   <- sensibleEditor
+  msg <- withSystemTempFile "compose.markdown" $ \path hMsg -> do
+    BS.hPut hMsg template
+    (_, _, _, _) <-
+      createProcess (proc editor [path])
+    BS.hGetContents hMsg
+  return $ parseMessage "message" msg
+
+sensibleEditor :: IO String
+sensibleEditor = return "/usr/bin/sensible-editor"
+-- TODO: Check $VISUAL and $EDITOR environment variables
 
 addActivity :: Activity -> Mail -> Mail
 addActivity act = addPart (catMaybes [fallbackPart act, Just (activityPart act)])
@@ -55,22 +83,22 @@ toActor :: Address -> Object
 toActor addr =
   emptyObject
     & oDisplayName .~ addressName addr
-    & oId          .~ Just (pack (show (toUri addr)))
+    & oId          .~ Just (Text.pack (show (toUri addr)))
 
 instance Identifiable Address where
   toUri addr = URI
     { uriScheme = "mailto:"
     , uriAuthority = Nothing
-    , uriPath = unpack (addressEmail addr)
+    , uriPath = Text.unpack (addressEmail addr)
     , uriQuery = ""
     , uriFragment = ""
     }
 
 instance Identifiable Object where
-  toUri o = fromJust $ fmap unpack (o ^. oId) >>= parseURI
+  toUri o = fromJust $ fmap Text.unpack (o ^. oId) >>= parseURI
 
 instance Identifiable Activity where
-  toUri o = fromJust $ fmap unpack (o ^. acId) >>= parseURI
+  toUri o = fromJust $ fmap Text.unpack (o ^. acId) >>= parseURI
 
 activityPart :: Activity -> Part
 activityPart act = Part
@@ -94,4 +122,4 @@ fallback :: Activity -> Maybe Text
 fallback = (^. acContent)
 
 quote :: Text -> Text
-quote msg = "> " <> replace "\n" "\n> " msg
+quote msg = "> " <> Text.replace "\n" "\n> " msg

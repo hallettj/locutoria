@@ -36,6 +36,7 @@ data Thread = Thread { tId :: ThreadId }
   deriving (Eq, Show)
 
 type MessageId = Text
+type SearchTerm = Text
 
 databaseOpen :: FilePath -> DatabaseMode -> IO Database
 databaseOpen f m = return (Database f m)
