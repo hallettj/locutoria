@@ -1,9 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Network.Mail.Locutoria.Index where
 
 import           Codec.ActivityStream.Dynamic
 import           Control.Applicative ((<$>))
+import           Control.Lens (makeLenses)
 import           Control.Monad (join)
 import           Data.Default (Default, def)
 import           Data.List (foldl', nub)
@@ -16,35 +18,40 @@ import Network.Mail.Locutoria.Internal
 import Network.Mail.Locutoria.MailingList
 import Network.Mail.Locutoria.Notmuch
 
+data Index = Index
+  { _activities :: Activities
+  , _lists      :: [MailingList]
+  , _likeCounts :: LikeCounts
+  , _threads    :: Threads
+  }
+  deriving Show
+
 type Activities = Map MessageId [Activity]
 type LikeCounts = Map MessageId Int
 type Threads    = Map ChannelId [ThreadInfo]
 
-data Index = Index
-  { iActivities :: Activities
-  , iLists      :: [MailingList]
-  , iLikeCounts :: LikeCounts
-  , iThreads    :: Threads
-  }
 
 instance Default Index where
   def = Index
-    { iActivities = Map.empty
-    , iLists      = []
-    , iLikeCounts = Map.empty
-    , iThreads    = Map.empty
+    { _activities = Map.empty
+    , _lists      = []
+    , _likeCounts = Map.empty
+    , _threads    = Map.empty
     }
+
+
+makeLenses ''Index
 
 fetchChannels :: Database -> IO (Index -> Index)
 fetchChannels db = do
-  lists <- getMailingLists db
-  return $ \index -> index { iLists = lists }
+  ls <- getMailingLists db
+  return $ \index -> index { _lists = ls }
 
 fetchThreads :: Database -> [MailingList] -> IO (Index -> Index)
-fetchThreads db lists = do
-  ts <- mapM (fetchListThreads db) lists
-  let tmap = Map.fromList (zip (map mlId lists) ts)
-  return $ \index -> index { iThreads = tmap }
+fetchThreads db ls = do
+  ts <- mapM (fetchListThreads db) ls
+  let tmap = Map.fromList (zip (map mlId ls) ts)
+  return $ \index -> index { _threads = tmap }
 
 fetchListThreads :: Database -> MailingList -> IO [ThreadInfo]
 fetchListThreads db list = do
@@ -55,11 +62,11 @@ fetchListThreads db list = do
 
 fetchLikeCounts :: Database -> Index -> IO (Index -> Index)
 fetchLikeCounts _ index = do
-  let ts = join (Map.elems (iThreads index))
+  let ts = join (Map.elems (_threads index))
   likes <- join <$> mapM (getLikes . toThread) ts
   let likes' = nub likes
-  let counts = foldl' incr (iLikeCounts index) likes'
-  return $ \index' -> index' { iLikeCounts = counts }
+  let counts = foldl' incr (_likeCounts index) likes'
+  return $ \index' -> index' { _likeCounts = counts }
   where
     incr map (_, obj) = case mId obj of
       Just m  -> Map.alter (\c -> Just (maybe 1 (+1) c)) m map
@@ -70,7 +77,7 @@ fetchLikeCounts _ index = do
       Nothing
 
 likeCount :: Index -> MessageId -> Int
-likeCount index mId = Map.findWithDefault 0 mId (iLikeCounts index)
+likeCount index mId = Map.findWithDefault 0 mId (_likeCounts index)
 
 toThread :: ThreadInfo -> Thread
 toThread (threadId, _, _, _) = Thread threadId

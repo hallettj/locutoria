@@ -3,25 +3,44 @@
 module Network.Mail.Locutoria.Cli where
 
 import Control.Event.Handler (Handler)
-import Data.Maybe (fromMaybe)
+import           Control.Lens ((^.))
+import           Control.Monad (when)
+import           Data.IORef
+import qualified Data.Map as Map
 import Data.Text (append, pack)
 import Graphics.Vty.Input (Key(..), Modifier(..))
 import Graphics.Vty.Widgets.All hiding (Handler)
 import System.Exit (exitSuccess)
 
-import Network.Mail.Locutoria.Client
+import qualified Network.Mail.Locutoria.Client as Client
+import qualified Network.Mail.Locutoria.Compose as C
+import Network.Mail.Locutoria.Keymap
 import Network.Mail.Locutoria.Internal (ChannelId, ThreadInfo)
 import Network.Mail.Locutoria.MailingList (MailingList(..))
-import Network.Mail.Locutoria.Notmuch (ThreadId)
+import Network.Mail.Locutoria.Notmuch (SearchTerm, ThreadId)
+import Network.Mail.Locutoria.State
 
 type Channels = List (Maybe ChannelId) FormattedText
 type Threads  = List ThreadId FormattedText
 
-ui :: Handler ClientEvent -> IO (Handler UiEvent, IO ())
-ui fireClientEvent = do
-  channels <- newList 1
-  threads <- newList 2
-  showWelcome threads
+data Cli = Cli
+  { _collection :: Collection
+  , _channels   :: Widget Channels
+  , _threads    :: Widget Threads
+  }
+
+ui :: KeyBindings -> Handler Client.Event -> State -> IO Client.Ui
+ui kb fire upstreamState = do
+  stateRef <- newIORef upstreamState
+  cli      <- initUi kb fire stateRef
+  let update = onStateChange fire cli stateRef
+  let run    = resumeUi cli >> fire Client.Refresh
+  return $ Client.Ui run update
+
+initUi :: KeyBindings -> Handler Client.Event -> IORef State -> IO Cli
+initUi kb fire stateRef = do
+  channels <- newList 1 :: IO (Widget Channels)
+  threads <- newList 2  :: IO (Widget Threads)
 
   layout <- hBox channels threads
   setBoxChildSizePolicy layout (PerChild (BoxFixed 30) BoxAuto)
@@ -33,104 +52,56 @@ ui fireClientEvent = do
   _ <- addToCollection c layout fg
 
   fg `onKeyPressed` \this key modifiers ->
-    case globalControls this key modifiers of
-      Just ev -> fireClientEvent ev >> return True
-      Nothing -> return False
+    handleKey stateRef fire this key modifiers (keymapGlobal kb)
 
-  fg `onKeyPressed` \this key modifiers ->
-    case channelControls this key modifiers of
-      Just ev -> fireClientEvent ev >> return True
-      Nothing -> return False
+  threads `onKeyPressed` \this key modifiers ->
+    handleKey stateRef fire this key modifiers (keymapConvList kb)
 
-  fg `onKeyPressed` \_ key modifiers ->
-    threadControls threads key modifiers >>= (\e -> case e of
-      Just ev -> fireClientEvent ev >> return True
-      Nothing -> return False)
+  channels `onKeyPressed` \this key modifiers ->
+    handleKey stateRef fire this key modifiers (keymapChanList kb)
 
-  fg `onKeyPressed` (channelControls_ channels)
-  fg `onKeyPressed` (threadControls_ threads)
+  return $ Cli
+    { _collection = c
+    , _channels   = channels
+    , _threads    = threads
+    }
 
-  channels `onSelectionChange` \e ->
-    case channelSelection e of
-      Just ev -> fireClientEvent ev
-      Nothing -> return ()
+resumeUi :: Cli -> IO ()
+resumeUi cli = runUi (_collection cli) defaultContext
 
-  return $ (stepUi channels threads, runUi c defaultContext)
+onStateChange :: Handler Client.Event
+              -> Cli
+              -> IORef State
+              -> State
+              -> IO ()
+onStateChange fire cli stateRef state = do
+  prevState <- readIORef stateRef
+  writeIORef stateRef state
 
-stepUi :: Widget Channels -> Widget Threads -> Handler UiEvent
-stepUi channels threads e = case e of
-  RenderChannels ls -> renderChannels channels ls
-  RenderThreads ts -> renderThreads threads ts
-  UiExit -> exitSuccess
+  when (prevState^.channels /= state^.channels) $
+    renderChannels (_channels cli) (state^.channels)
+  case currentChannelIndex state of
+    Just n  -> setSelected (_channels cli) (n + 2)
+    Nothing -> return ()
 
-globalControls :: Widget a -> Key -> [Modifier] -> Maybe ClientEvent
-globalControls _ key _ =
-    if key == KChar 'q' then
-      Just ClientExit
-    else
-      Nothing
+  when (prevState^.conversations /= state^.conversations) $
+    renderThreads  (_threads  cli) (state^.conversations)
 
-channelControls :: Widget a -> Key -> [Modifier] -> Maybe ClientEvent
-channelControls _ key _ =
-  if key == KChar '@' then
-    Just Refresh
-  else
-    Nothing
+  case state^.activity of
+    Shutdown -> shutdownUi >> exitSuccess
+    _ -> return ()
 
-channelControls_ :: Widget Channels -> Widget a -> Key -> [Modifier] -> IO Bool
-channelControls_ channels _ key mods = case (key, mods) of
-  (KChar 'p', [MCtrl]) -> do
-    sel <- getSelected channels
-    let n  = fromMaybe 1 (fmap fst sel)
-    let n' = if n - 1 == 1 then 0 else n - 1
-    setSelected channels n'
-    return True
-  (KChar 'n', [MCtrl]) -> do
-    sel <- getSelected channels
-    let n  = fromMaybe 1 (fmap fst sel)
-    let n' = if n + 1 == 1 then 2 else n + 1
-    setSelected channels n'
-    return True
-  _ ->
-    return False
-
-threadControls :: Widget Threads -> Key -> [Modifier] -> IO (Maybe ClientEvent)
-threadControls threads key mods = case (key, mods) of
-  (KChar 'r', []) -> do
-    sel <- getSelected threads
-    return $ case sel of
-      Just (_, (tId, _)) -> Just (ComposeReply tId)
-      Nothing                  -> Nothing
-  _ ->
-    return Nothing
-
-threadControls_ :: Widget Threads -> Widget a -> Key -> [Modifier] -> IO Bool
-threadControls_ threads _ key mods = case (key, mods) of
-  (KChar 'j', []) -> do
-      sel <- getSelected threads
-      let n = fromMaybe (-1) (fmap fst sel)
-      setSelected threads (n + 1)
-      return True
-  (KChar 'k', []) -> do
-      sel <- getSelected threads
-      let n = fromMaybe 1 (fmap fst sel)
-      setSelected threads (n - 1)
-      return True
-  (KChar 'g', []) -> do
-      setSelected threads 0
-      return True
-  (KChar 'G', _) -> do
-      len <- getListSize threads
-      setSelected threads (len - 1)
-      return True
-  _ ->
-    return False
-
-channelSelection :: SelectionEvent (Maybe ChannelId) b -> Maybe ClientEvent
-channelSelection (SelectionOn 0 _              _) = Just (SetChannel Nothing)
-channelSelection (SelectionOn _ (Just channel) _) = Just (SetChannel (Just channel))
-channelSelection (SelectionOn _ Nothing        _) = Nothing
-channelSelection SelectionOff = Nothing
+handleKey :: IORef State
+          -> Handler Client.Event
+          -> Widget a
+          -> Key -> [Modifier]
+          -> Keymap
+          -> IO Bool
+handleKey stateRef fire _ key mods keymap = do
+  upstreamState <- readIORef stateRef
+  case Map.lookup (key, mods) keymap of
+    Just act -> act fire upstreamState >> return True
+    Nothing  -> return False
 
 renderChannels :: Widget Channels -> [MailingList] -> IO ()
 renderChannels channels ls = do

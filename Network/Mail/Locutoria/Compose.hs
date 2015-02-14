@@ -5,10 +5,10 @@ module Network.Mail.Locutoria.Compose where
 
 import           Control.Lens ((&), (.~), (^.))
 import           Data.Aeson (decode, encode)
+import qualified Data.ByteString.Lazy as LB
 import           Data.DateTime (DateTime)
 import           Data.Maybe (catMaybes, fromJust)
 import           Data.Monoid ((<>))
-import           Data.String (fromString)
 import           Data.Text (Text)
 import qualified Data.Text as Text
 import           Data.Text.Lazy (fromChunks)
@@ -22,7 +22,8 @@ import           Network.Mail.Mime ( Address(..)
                                    , addPart, renderMail', sendmailCustom)
 import           Network.Mail.Mime.Parser (ParseError, parseMessage)
 import           Network.URI (URI(..), parseURI)
-import           System.Process (readProcess)
+import           System.IO (hClose)
+import           System.Process
 
 import Network.Mail.Locutoria.Identifiable
 import Network.Mail.Locutoria.Notmuch
@@ -34,17 +35,26 @@ data MessageParams = MessageParams
   }
   deriving Show
 
+-- send :: Mail -> IO ()
+-- send mail = renderMail' mail >>= (\bs -> sendmailCustom "/usr/bin/tee" ["/home/jesse/sent"] bs)
+
 send :: Mail -> IO ()
-send mail = renderMail' mail >>= (\bs -> sendmailCustom "/usr/bin/env"
-  [ "msmtp"
-  , "--read-envelope-from"
-  , "--read-recipients"] bs)
+send mail = renderMail' mail >>= LB.writeFile "/home/jesse/sent"
+
+-- send :: Mail -> IO ()
+-- send mail = renderMail' mail >>= (\bs -> sendmailCustom "/usr/bin/env"
+--   [ "msmtp"
+--   , "--read-envelope-from"
+--   , "--read-recipients"] bs)
 
 composeReply :: SearchTerm -> IO (Either ParseError Mail)
 composeReply term = do
-  template <- notmuch ["reply", Text.unpack term]
-  msg      <- readProcess "/usr/bin/env" ["vipe", ".markdown"] template
-  let bs = encodeUtf8 (fromString msg)
+  template <- notmuchBS ["reply", Text.unpack term]
+  (Just hin, Just hout, _, _) <- createProcess $ (proc "/usr/bin/env" ["vipe", ".markdown"])
+    { std_in = CreatePipe, std_out = CreatePipe, delegate_ctlc = True }
+  LB.hPut hin template
+  hClose hin
+  bs <- LB.hGetContents hout
   return $ parseMessage "message" bs
 
 addActivity :: Activity -> Mail -> Mail

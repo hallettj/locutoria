@@ -5,159 +5,126 @@ module Network.Mail.Locutoria.Client where
 
 import           Control.Applicative ((<$>))
 import           Control.Event.Handler (AddHandler, Handler)
-import           Control.Monad (mplus)
-import           Data.Default (Default, def)
-import qualified Data.Map.Strict as Map
-import           Data.Maybe (catMaybes)
-import qualified Data.Text as Text
-import           Reactive.Banana (Moment, compile, mapAccum, spill)
-import           Reactive.Banana.Frameworks (Frameworks, actuate, fromAddHandler, reactimate)
+import           Control.Lens ((^.), (.~), (&))
+import           Data.Default (def)
+import           Data.Text (Text)
+import           Reactive.Banana (Moment, compile, mapAccum)
+import           Reactive.Banana.Frameworks ( Frameworks
+                                            , actuate
+                                            , changes
+                                            , fromAddHandler
+                                            , newAddHandler
+                                            , pause
+                                            , reactimate
+                                            , reactimate'
+                                            )
 
-import           Network.Mail.Locutoria.Compose
 import           Network.Mail.Locutoria.Index
 import           Network.Mail.Locutoria.Internal
-import           Network.Mail.Locutoria.MailingList
 import           Network.Mail.Locutoria.Notmuch
+import           Network.Mail.Locutoria.State
 
-data ClientConfig = ClientConfig
-  { clDb    :: Database
+data Config = Config
+  { clDb :: Database
   }
 
-data ClientState = ClientState
-  { clIndex           :: Index
-  , clSelectedChannel :: Maybe ChannelId
-  , clRefreshing      :: Bool
-  }
+data Ui = Ui { _runUi :: IO (), _updateUi :: State -> IO () }
 
-data ClientEvent = Refresh
-                 | ComposeReply ThreadId
-                 | SetChannel (Maybe ChannelId)
-                 | IndexUpdate (Index -> Index)
-                 | ClientExit
+type Action = Handler Event -> IO ()
 
-data Response = DataResp DataEvent
-              | UiResp UiEvent
-              | Action (Handler ClientEvent -> IO ())
+data Event = Refresh
+           | RefreshChannels
+           | RefreshThreads
+           | RefreshLikeCounts
+           | ComposeReply ThreadId
+           | GenericError Text
+           | SetChannel (Maybe ChannelId)
+           | SetThread (Maybe ThreadId)
+           | IndexUpdate (Index -> Index)
+           | Quit
+           | RawMessage Text
 
-data DataEvent = FetchChannels Database
-               | FetchThreads Database [MailingList]
-               | FetchLikeCounts Database Index
-
-data UiEvent = RenderChannels [MailingList]
-             | RenderThreads [ThreadInfo]
-             | UiExit
-  deriving Show
-
-instance Default ClientState where
-  def = ClientState
-    { clIndex           = def
-    , clSelectedChannel = Nothing
-    , clRefreshing      = False
-    }
-
-locutoria :: ClientConfig
-          -> AddHandler ClientEvent
-          -> Handler ClientEvent
-          -> Handler UiEvent
-          -> Handler DataEvent
+locutoria :: Config
+          -> (Handler Event -> State -> IO Ui)
           -> IO ()
-locutoria config addEvent fireClientEvent stepUi stepData' = do
+locutoria config getUi = do
+  (addEvent, fireEvent) <- newAddHandler
+  (Ui runUi updateUi)   <- getUi fireEvent def
   network <- compile $
-    networkDescription config addEvent fireClientEvent stepUi stepData'
+    networkDescription config addEvent fireEvent updateUi
   actuate network
+  runUi
+  pause network
 
-networkDescription :: forall t. Frameworks t => ClientConfig
-                                       -> AddHandler ClientEvent
-                                       -> Handler ClientEvent
-                                       -> Handler UiEvent
-                                       -> Handler DataEvent
-                                       -> Moment t ()
-networkDescription config addEvent fireClientEvent stepUi stepData' = do
-  clientEvents <- fromAddHandler addEvent
+networkDescription :: forall t. Frameworks t
+                   => Config
+                   -> AddHandler Event
+                   -> Handler Event
+                   -> (State -> IO ())
+                   -> Moment t ()
+networkDescription config addEvent fireEvent updateUi = do
+  incomingEvents <- fromAddHandler addEvent
   let
-    initState          = def
-    responseActions    = fmap (step config) clientEvents
-    (responseLists, _) = mapAccum initState responseActions
-    responses          = spill responseLists
-  reactimate $ fmap (\e -> case e of
-    DataResp e' -> stepData' e'
-    UiResp e'   -> stepUi e'
-    Action io   -> io fireClientEvent
-    ) responses
+    initState        = def
+    handler          = handle config <$> incomingEvents
+    (actions, state) = mapAccum initState handler
+    ui               = updateUi <$> state
+  reactimate (fmap ($ fireEvent) actions)
+  uiUpdates <- changes ui
+  reactimate' uiUpdates
 
-step :: ClientConfig -> ClientEvent -> ClientState -> ([Response], ClientState)
-step conf event s = case event of
+handle :: Config -> Event -> State -> (Action, State)
+handle config event s = case event of
   Refresh ->
-    let refreshing = clRefreshing s
-        ls = iLists index
-        s' = s { clRefreshing = True }
-    in
-    if not refreshing
-    then (map DataResp
-      [ FetchChannels db
-      , FetchThreads db ls
-      , FetchLikeCounts db index
-      ], s')
-    else ([], s)
+    if not (s^.refreshing)
+    then (\fire -> (do
+      fire RefreshChannels
+      fire RefreshThreads
+      fire RefreshLikeCounts),
+      s & refreshing .~ True)
+    else
+      (noAction, s)
 
-  SetChannel chan ->
-    let s' = s { clSelectedChannel = chan }
-    in
-    (updateUi s s', s')
+  RefreshChannels   -> updateIndex $ fetchChannels db
+  RefreshThreads    -> updateIndex $ fetchThreads db (s^.index.lists)
+  RefreshLikeCounts -> updateIndex $ fetchLikeCounts db (s^.index)
 
   IndexUpdate f ->
-    let index' = f index
-        s' = s { clIndex = index', clRefreshing = False }
+    let index' = f (s^.index)
+        s' = s { _index = index', _refreshing = False }
     in
-    (updateUi s s', s')
+    (noAction, s')
 
-  ComposeReply tId -> action s $ \fire -> do
-    msg <- composeReply (Text.pack tId)
-    case msg of
-      Left _     -> return ()  -- TODO: report error
-      Right mail -> send mail >> fire Refresh
+  SetChannel chan -> (noAction, s { _selectedChannel = chan })
+  SetThread threadId -> (noAction, s { _selectedThread = threadId })
 
-  ClientExit ->
-    ([UiResp UiExit], s)
+  ComposeReply threadId -> (noAction, s { _activity = Compose threadId })
+
+  -- ComposeReply tId -> action s $ \fire -> do
+  --   msg <- composeReply (Text.pack tId)
+  --   case msg of
+  --     Left  err  -> putStrLn (show err)
+  --     Right mail -> send mail >> fire Refresh
+
+  Quit -> (noAction, s { _activity = Shutdown })
 
   where
-    db    = clDb    conf
-    index = clIndex s
-    action s_ io = ([Action io], s_)
+    db       = clDb config
+    noAction = const (return ())
+    updateIndex :: IO (Index -> Index) -> (Action, State)
+    updateIndex getUpdate = (\fire -> (do
+      update <- getUpdate
+      fire (IndexUpdate update)
+      ), s)
 
-stepData :: Handler ClientEvent -> Handler DataEvent
-stepData fire e = case e of
-  FetchChannels db -> do
-    index' <- fetchChannels db
-    fire (IndexUpdate index')
 
-  FetchThreads db chans -> do
-    index' <- fetchThreads db chans
-    fire (IndexUpdate index')
-
-  FetchLikeCounts db index -> do
-    index' <- fetchLikeCounts db index
-    fire (IndexUpdate index')
-
-updateUi :: ClientState -> ClientState -> [Response]
-updateUi prevState state = map UiResp $ catMaybes
-  [ RenderChannels <$> iChanged iLists
-  , RenderThreads  <$> threads
-  ]
-  where
-    iChanged f = if (f prevIdx /= f idx) then Just (f idx) else Nothing
-    sChanged f = if (f prevState /= f state) then Just (f state) else Nothing
-    idx        = clIndex state
-    prevIdx    = clIndex prevState
-    threadsChanged = (const True <$> iChanged iThreads) `mplus` (const True <$> sChanged clSelectedChannel)
-    threads    = do
-      _       <- threadsChanged
-      curChan <- clSelectedChannel state
-      Map.lookup curChan (iThreads idx)
-
-instance Show ClientEvent where
-  show Refresh            = "Refresh"
-  show (SetChannel chan)  = "SetChannel " ++ show chan
-  show (IndexUpdate _)    = "IndexUpdate"
-  show (ComposeReply tId) = "ComposeReply " ++ show tId
-  show ClientExit         = "ClientExit"
+instance Show Event where
+  show Refresh                 = "Refresh"
+  show RefreshChannels         = "RefreshChannels"
+  show RefreshThreads          = "RefreshThreads"
+  show RefreshLikeCounts       = "RefreshLikeCounts"
+  show (SetChannel chan)       = "SetChannel " ++ show chan
+  show (IndexUpdate _)         = "IndexUpdate"
+  show (ComposeReply threadId) = "ComposeReply " ++ show threadId
+  show Quit                    = "Quit"
+  show _                       = "Uknown Event"

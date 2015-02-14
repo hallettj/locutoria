@@ -2,33 +2,34 @@
 
 module Main where
 
-import Control.Event.Handler (newAddHandler)
-import System.Posix.Signals (Handler(Catch), installHandler, sigINT)
+import Control.Event.Handler (Handler)
+import Data.Default (def)
 
-import Network.Mail.Locutoria.Cli (ui)
-import Network.Mail.Locutoria.Client ( ClientConfig(..)
-                                     , ClientEvent(..)
+import qualified Network.Mail.Locutoria.Cli as Cli
+import Network.Mail.Locutoria.Client ( Config(..)
+                                     , Event(..)
+                                     , Ui(..)
                                      , locutoria
-                                     , stepData
                                      )
+import Network.Mail.Locutoria.Keymap (KeyBindings)
 import Network.Mail.Locutoria.Notmuch ( Database(..)
                                       , DatabaseMode(..)
                                       )
+import Network.Mail.Locutoria.State (State)
 
-config :: IO ClientConfig
-config = return $ ClientConfig db
+config :: IO Config
+config = return $ Config db
 
 db :: Database
 db = Database "/home/jesse/mail/galois" DatabaseModeReadOnly
 
+keybindings :: KeyBindings
+keybindings = def
+
+ui :: Handler Event -> State -> IO Ui
+ui = Cli.ui keybindings
+
 main :: IO ()
 main = do
   c <- config
-  (addEvent, fireEvent) <- newAddHandler
-  (stepUi, runUi) <- ui fireEvent
-  let stepData' = stepData fireEvent
-  locutoria c addEvent fireEvent stepUi stepData'
-  _ <- installHandler sigINT (Catch (fireEvent ClientExit)) Nothing
-  putStrLn ("Indexing mail in " ++ dLoc db ++ " ...")
-  fireEvent Refresh
-  runUi
+  locutoria c ui
