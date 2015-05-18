@@ -7,7 +7,7 @@ import           Codec.ActivityStream.Dynamic
 import           Control.Applicative ((<$>))
 import           Control.Lens ((^.), makeLenses)
 import           Data.Default (Default, def)
-import           Data.List (sort)
+import           Data.List (nub, sort)
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import           Data.Maybe (catMaybes, listToMaybe)
@@ -67,7 +67,7 @@ toConv t = do
     }
 
 lists :: Index -> [MailingList]
-lists idx = sort $ catMaybes $ _list <$> idx^.conversations
+lists idx = nub $ sort $ catMaybes $ _list <$> idx^.conversations
 
 -- fetchLikeCounts :: Database -> Index -> IO (Index -> Index)
 -- fetchLikeCounts _ index = do
