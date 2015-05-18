@@ -5,7 +5,7 @@ module Network.Mail.Locutoria.Client where
 
 import           Control.Applicative ((<$>))
 import           Control.Event.Handler (AddHandler, Handler)
-import           Control.Lens ((^.), (.~), (&))
+import           Control.Lens ((^.), (.~), (%~), (&))
 import           Data.Default (def)
 import           Data.Text (Text)
 import           Reactive.Banana (Moment, compile, mapAccum)
@@ -20,7 +20,6 @@ import           Reactive.Banana.Frameworks ( Frameworks
                                             )
 
 import           Network.Mail.Locutoria.Index
-import           Network.Mail.Locutoria.Internal
 import           Network.Mail.Locutoria.Notmuch
 import           Network.Mail.Locutoria.State
 
@@ -33,12 +32,10 @@ data Ui = Ui { _runUi :: IO (), _updateUi :: State -> IO () }
 type Action = Handler Event -> IO ()
 
 data Event = Refresh
-           | RefreshChannels
-           | RefreshThreads
-           | RefreshLikeCounts
+           | DoneRefresh
            | ComposeReply ThreadId
            | GenericError Text
-           | SetChannel (Maybe ChannelId)
+           | SetChannel Channel
            | SetThread (Maybe ThreadId)
            | IndexUpdate (Index -> Index)
            | Quit
@@ -78,22 +75,16 @@ handle config event s = case event of
   Refresh ->
     if not (s^.refreshing)
     then (\fire -> (do
-      fire RefreshChannels
-      fire RefreshThreads
-      fire RefreshLikeCounts),
-      s & refreshing .~ True)
+      cs <- fetchRecentConversations db
+      fire $ IndexUpdate cs
+      fire $ DoneRefresh
+      ), s & refreshing .~ True)
     else
       (noAction, s)
 
-  RefreshChannels   -> updateIndex $ fetchChannels db
-  RefreshThreads    -> updateIndex $ fetchThreads db (s^.index.lists)
-  RefreshLikeCounts -> updateIndex $ fetchLikeCounts db (s^.index)
+  DoneRefresh -> (noAction, s & refreshing .~ False)
 
-  IndexUpdate f ->
-    let index' = f (s^.index)
-        s' = s { _index = index', _refreshing = False }
-    in
-    (noAction, s')
+  IndexUpdate f -> (noAction, s & index %~ f)
 
   SetChannel chan -> (noAction, s { _selectedChannel = chan })
   SetThread threadId -> (noAction, s { _selectedThread = threadId })
@@ -111,18 +102,11 @@ handle config event s = case event of
   where
     db       = clDb config
     noAction = const (return ())
-    updateIndex :: IO (Index -> Index) -> (Action, State)
-    updateIndex getUpdate = (\fire -> (do
-      update <- getUpdate
-      fire (IndexUpdate update)
-      ), s)
 
 
 instance Show Event where
   show Refresh                 = "Refresh"
-  show RefreshChannels         = "RefreshChannels"
-  show RefreshThreads          = "RefreshThreads"
-  show RefreshLikeCounts       = "RefreshLikeCounts"
+  show DoneRefresh             = "DoneRefresh"
   show (SetChannel chan)       = "SetChannel " ++ show chan
   show (IndexUpdate _)         = "IndexUpdate"
   show (ComposeReply threadId) = "ComposeReply " ++ show threadId

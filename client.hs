@@ -5,13 +5,13 @@ module Main where
 import Control.Event.Handler (Handler)
 import Data.Default (def)
 
-import qualified Network.Mail.Locutoria.Cli as Cli
+import           Network.Mail.Locutoria.Cli.Keymap (KeyBindings)
+import qualified Network.Mail.Locutoria.Cli.Ui as Cli
 import Network.Mail.Locutoria.Client ( Config(..)
                                      , Event(..)
                                      , Ui(..)
                                      , locutoria
                                      )
-import Network.Mail.Locutoria.Keymap (KeyBindings)
 import Network.Mail.Locutoria.Notmuch ( Database(..)
                                       , DatabaseMode(..)
                                       )

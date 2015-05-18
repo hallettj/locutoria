@@ -1,62 +1,75 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Network.Mail.Locutoria.State where
 
-import           Control.Lens ((^.), Getter, Lens, makeLenses, to)
+import           Control.Applicative ((<$>))
+import           Control.Lens (makeLenses, preview, traverse)
+import           Control.Lens.Operators
 import           Data.Default (Default, def)
-import           Data.List (findIndex)
-import qualified Data.Map.Strict as Map
-import           Data.Maybe (fromMaybe)
+import           Data.Maybe (isNothing)
+import           Data.Text (Text)
 
-import           Network.Mail.Locutoria.Index
-import           Network.Mail.Locutoria.Internal
+import           Network.Mail.Locutoria.Index hiding (_conversations, conversations)
+import qualified Network.Mail.Locutoria.Index as Index
 import           Network.Mail.Locutoria.MailingList
 import           Network.Mail.Locutoria.Notmuch
 
 data State = State
   { _index           :: Index
-  , _selectedChannel :: Maybe ChannelId
+  , _selectedChannel :: Channel
   , _selectedThread  :: Maybe ThreadId
   , _refreshing      :: Bool
   , _activity        :: Activity
   }
   deriving Show
 
-data Activity = NoActivity
+data Activity = Conversations
               | Compose ThreadId
               | Shutdown
   deriving Show
 
+data ChannelGroup = ChannelGroup
+  { _groupHeading  :: Text
+  , _groupChannels :: [Channel]
+  }
+  deriving (Eq, Ord, Show)
+
+data Channel = EmptyChannel
+             | FlaggedChannel
+             | ListChannel MailingList
+             | NoListChannel
+  deriving (Eq, Ord, Show)
+
 
 instance Default State where
   def = State { _index           = def
-              , _selectedChannel = Nothing
+              , _selectedChannel = EmptyChannel
               , _selectedThread  = Nothing
               , _refreshing      = False
-              , _activity        = NoActivity
+              , _activity        = Conversations
               }
 
 makeLenses ''State
+makeLenses ''ChannelGroup
 
-channels :: Lens State State [MailingList] [MailingList]
-channels = index . lists
-
-_conversations :: State -> [ThreadInfo]
-_conversations s = fromMaybe [] ts
+channelGroups :: State -> [ChannelGroup]
+channelGroups s =
+  [ ChannelGroup "Direct"  [NoListChannel]
+  , ChannelGroup "Flagged" [FlaggedChannel]
+  , ChannelGroup "Lists"   ls
+  ]
   where
-    threadMap = _threads (_index s)
-    ts = do
-      channel <- _selectedChannel s
-      Map.lookup channel threadMap
+    ls = ListChannel <$> lists (_index s)
 
-conversations :: Getter State [ThreadInfo]
-conversations = to _conversations
+conversations :: State -> [Conversation]
+conversations s = filter (inChannel (s^.selectedChannel)) (s^.index.Index.conversations)
 
-currentChannelIndex :: State -> Maybe Int
-currentChannelIndex s = findIndex (\ml -> s^.selectedChannel == Just (mlId ml)) (s^.channels)
+inChannel :: Channel -> Conversation -> Bool
+inChannel EmptyChannel _     = False
+inChannel NoListChannel c    = isNothing (c^.list)
+inChannel FlaggedChannel c   = tagged "flagged" c
+inChannel (ListChannel ml) c = (c & preview (list . traverse . mlId)) == Just (ml^.mlId)
 
-currentConversationIndex :: State -> Maybe Int
-currentConversationIndex s = findIndex (\c -> s^.selectedThread == Just (threadId c)) cs
-  where
-    cs = s^.conversations
-    threadId (tId', _, _, _) = tId'
+tagged :: Text -> Conversation -> Bool
+tagged tag c = any (\m -> tag `elem` msgTags m) (c^.messages)

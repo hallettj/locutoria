@@ -1,18 +1,15 @@
-module Network.Mail.Locutoria.Keymap where
+module Network.Mail.Locutoria.Cli.Keymap where
 
-import           Control.Applicative ((<$>))
 import           Control.Event.Handler (Handler)
 import           Control.Lens ((^.))
 import           Data.Map (Map)
 import qualified Data.Map as Map
-import           Data.Maybe (fromMaybe)
 import           Data.Default (Default, def)
 import           Graphics.Vty.Input (Key(..), Modifier(..))
+import           Graphics.Vty.Widgets.All hiding (Handler)
 
+import           Network.Mail.Locutoria.Cli
 import qualified Network.Mail.Locutoria.Client as Client
-import           Network.Mail.Locutoria.Internal
-import           Network.Mail.Locutoria.MailingList
-import           Network.Mail.Locutoria.Notmuch
 import           Network.Mail.Locutoria.State (State)
 import qualified Network.Mail.Locutoria.State as State
 
@@ -25,15 +22,15 @@ data KeyBindings = KeyBindings
 type Keymap = Map KeyCombo UiAction
 type KeyCombo = (Key, [Modifier])
 
-type UiAction = Handler Client.Event -> State -> IO ()
+type UiAction = Handler Client.Event -> Cli -> State -> IO ()
 
 instance Default KeyBindings where
   def = KeyBindings defKeymapGlobal defKeymapConvList defKeymapChanlist
 
 defKeymapGlobal :: Map KeyCombo UiAction
 defKeymapGlobal = Map.fromList
-  [ ((KChar 'q', []),      \fire _ -> fire Client.Quit)
-  , ((KChar '@', []),      \fire _ -> fire Client.Refresh)
+  [ ((KChar 'q', []),      \fire _ _ -> fire Client.Quit)
+  , ((KChar '@', []),      \fire _ _ -> fire Client.Refresh)
   , ((KChar 'p', [MCtrl]), incChannel (\n -> n - 1))
   , ((KChar 'n', [MCtrl]), incChannel (+1))
   ]
@@ -51,27 +48,23 @@ defKeymapChanlist :: Map KeyCombo UiAction
 defKeymapChanlist = Map.empty
 
 incChannel :: (Int -> Int) -> UiAction
-incChannel f fire s = fire $ Client.SetChannel (mlId <$> chan)
-  where
-    cs   = s^.State.channels
-    idx  = wrap (fromMaybe 0 (f <$> (State.currentChannelIndex s))) (length cs)
-    chan = if length cs > idx then Just (cs !! idx) else Nothing
+incChannel f _ cli _ = incWidget f (cli^.channelsWidget)
 
 incConv :: (Int -> Int) -> UiAction
-incConv f fire s = fire $ Client.SetThread (threadId <$> conv)
-  where
-    cs   = s^.State.conversations
-    idx  = wrap (fromMaybe 0 (f <$> (State.currentConversationIndex s))) (length cs)
-    conv = if length cs > idx then Just (cs !! idx) else Nothing
+incConv f _ cli _ = incWidget f (cli^.threadsWidget)
 
-wrap :: Int -> Int -> Int
-wrap n len | len > 0   = if n < 0 then len - n else n `mod` len
-           | otherwise = 0
-
-threadId :: ThreadInfo -> ThreadId
-threadId (tId', _, _, _) = tId'
+incWidget :: (Int -> Int) -> Widget (List a b) -> IO ()
+incWidget f widget = do
+  curr <- getSelected widget
+  len  <- getListSize widget
+  let idx     = maybe 0 (f . fst) curr
+  let nextIdx = if idx < len then idx else 0
+  if len > 0 then
+    setSelected widget nextIdx
+  else
+    return ()
 
 composeReply :: UiAction
-composeReply fire s = case s^.State.selectedThread of
+composeReply fire _ s = case s^.State.selectedThread of
   Just thread -> fire $ Client.ComposeReply thread
   Nothing     -> return ()

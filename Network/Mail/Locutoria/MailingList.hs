@@ -1,36 +1,40 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Network.Mail.Locutoria.MailingList where
 
+import           Control.Lens (makeLenses)
 import           Data.Maybe (catMaybes, listToMaybe)
 import           Data.List (nubBy, zipWith4)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.IO as TIO
 import           Network.URI (URI, parseURI)
+import           System.Directory (doesFileExist)
 import           System.IO (Handle, IOMode(..), withFile)
 import           System.Process (CreateProcess(..), StdStream(..), createProcess, proc)
 
-import           Network.Mail.Locutoria.Notmuch
-
 data MailingList = MailingList
-  { mlId          :: T.Text
-  , mlPost        :: [URI]
-  , mlUnsubscribe :: [URI]
-  , mlArchive     :: [URI]
+  { _mlId        :: MailingListId
+  , _post        :: [URI]
+  , _unsubscribe :: [URI]
+  , _archive     :: [URI]
   }
   deriving Show
 
 instance Eq MailingList where
-  a == b = mlId a == mlId b
+  a == b = _mlId a == _mlId b
 instance Ord MailingList where
-  compare a b = compare (mlId a) (mlId b)
+  compare a b = compare (_mlId a) (_mlId b)
 
 type Header = String
+type MailingListId = T.Text
 
-getMailingLists :: Database -> IO [MailingList]
-getMailingLists db = do
-  matches <- grepHeaders "List-Id" (dLoc db)
+makeLenses ''MailingList
+
+getMailingLists :: [FilePath] -> IO [MailingList]
+getMailingLists paths = do
+  matches <- grepHeaders "List-Id" paths
   let uniqs        = nubBy (\a b -> snd a == snd b) matches
   let (files, ids) = unzip uniqs
   let sfiles       = map T.unpack files
@@ -50,17 +54,22 @@ parseURIs t = catMaybes (map (parseURI . T.unpack . uri) parts)
     parts = map T.strip $ T.split (== ',') t
     uri p = T.tail (T.takeWhile (/= '>') (T.dropWhile (/= '<') p))
 
-grepHeaders :: Header -> FilePath -> IO [(T.Text, T.Text)]
-grepHeaders header path = do
-  h <- grepRec header path >>= insertDelim header delim
+grepHeaders :: Header -> [FilePath] -> IO [(T.Text, T.Text)]
+grepHeaders header paths = do
+  h <- grepRec header paths >>= insertDelim header delim
   extractMatches delim h
   where
     delim = "@delim@"
 
 grepHeader :: Header -> FilePath -> IO (Maybe T.Text)
 grepHeader header path = do
-  matches <- withFile path ReadMode $ \h ->
-    combineMultilineHeaders h >>= grep header >>= insertDelim header delim >>= extractMatches delim
+  fileExists <- doesFileExist path
+  matches <- if fileExists
+    then
+      withFile path ReadMode $ \h ->
+        combineMultilineHeaders h >>= grep header >>= insertDelim header delim >>= extractMatches delim
+    else
+      return []
   return $ fmap snd (listToMaybe matches)
   where
     delim = "@delim@"
@@ -70,10 +79,10 @@ grepHeaderUris header path = do
   v <- grepHeader header path
   return $ maybe [] parseURIs v
 
-grepRec :: Header -> FilePath -> IO Handle
-grepRec header path = do
+grepRec :: Header -> [FilePath] -> IO Handle
+grepRec header paths = do
   (_, Just out, _, _) <-
-    createProcess (proc "grep" ["-Ri", header ++ ": ", path]) { std_out = CreatePipe }
+    createProcess (proc "grep" (["-Ri", header ++ ": "] ++ paths)) { std_out = CreatePipe }
   return out
 
 grep :: Header -> Handle -> IO Handle

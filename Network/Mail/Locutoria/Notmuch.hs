@@ -65,10 +65,19 @@ threadGetMessages t = do
     Right ts ->
       return $ head ts
 
+threadGetMessagesFlat :: Thread -> IO [Message]
+threadGetMessagesFlat t = flatThread <$> threadGetMessages t
+
 threadGetHeaderValues :: Text -> Thread -> IO [Text]
 threadGetHeaderValues h t = do
   ms <- flatThread <$> threadGetMessages t
   return $ catMaybes $ map (lookup h . msgHeaders) ms
+
+messagesHeaderValues :: Text -> [Message] -> [Text]
+messagesHeaderValues h ms = catMaybes $ map (lookup h . msgHeaders) ms
+
+messageHeaderValue :: Text -> Message -> Maybe Text
+messageHeaderValue h = lookup h . msgHeaders
 
 -- TODO: use a Foldable instance
 flatThread :: [MsgThread] -> [Message]
@@ -100,15 +109,17 @@ data Message = Message
   { msgId :: MessageId
   , msgHeaders :: [(Text, Text)]
   , msgBody :: [MessagePart]
+  , msgFilename :: FilePath
+  , msgTags :: [Text]
   }
-  deriving Show
+  deriving (Eq, Ord, Show)
 
 data MessagePart = MessagePart
   { mpId :: Int
   , mpContentType :: Text
   , mpSubparts :: [MessagePart]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 instance FromJSON MsgThread where
   parseJSON (Ae.Array a) = if V.length a == 2 then
@@ -125,6 +136,8 @@ instance FromJSON Message where
     Message <$> o .: "id"
             <*> (HM.toList <$> o .: "headers")
             <*> o .: "body"
+            <*> o .: "filename"
+            <*> o .: "tags"
     where
   parseJSON _ = fail "error parsing Message: expected object"
 
