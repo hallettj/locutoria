@@ -1,25 +1,17 @@
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- This is intended to emulate the api of Foreign.Notmuch; to be used as a shim
 -- until I get that library working.
 module Network.Mail.Locutoria.Notmuch where
 
-import Control.Applicative ((<$>), (<*>), pure)
-import           Data.Aeson ( FromJSON(..)
-                            , (.:)
-                            )
+import Control.Applicative ((<$>))
 import qualified Data.Aeson as Ae
 import qualified Data.ByteString.Lazy as BS
-import qualified Data.HashMap.Strict as HM
 import Data.Maybe (catMaybes)
-import Data.Text (Text, unpack)
-import Data.Vector ((!))
-import qualified Data.Vector as V
-import Network.URI (URI(..))
+import Data.Text (Text)
 import System.Process (CreateProcess(..), StdStream(..), createProcess, proc, readProcess)
 
-import Network.Mail.Locutoria.Identifiable
+import Network.Mail.Locutoria.Message
 
 data Database = Database { dLoc :: FilePath, dMode :: DatabaseMode  }
   deriving Show
@@ -55,40 +47,28 @@ threadGetAuthors = threadGetHeaderValues "From"
 threadGetRecipients :: Thread -> IO [Text]
 threadGetRecipients = threadGetHeaderValues "To"
 
-threadGetMessages :: Thread -> IO [MsgThread]
-threadGetMessages t = do
+threadGetMessages :: Bool -> Thread -> IO [MsgThread]
+threadGetMessages includeBody t = do
   -- out <- notmuchBS ["show", "--format=json", "--body=false", tId t]
-  out <- notmuchBS ["show", "--format=json", tId t]
+  out <- notmuchBS ["show", "--format=json", "--body="++ if includeBody then "true" else "false", tId t]
   let parsed = Ae.eitherDecode out :: Either String [[MsgThread]]
   case parsed of
     Left err -> putStrLn err >> return []
     Right ts ->
       return $ head ts
 
-threadGetMessagesFlat :: Thread -> IO [Message]
-threadGetMessagesFlat t = flatThread <$> threadGetMessages t
+threadGetMessagesFlat :: Bool -> Thread -> IO [Message]
+threadGetMessagesFlat includeBody t = flatThread <$> threadGetMessages includeBody t
 
 threadGetHeaderValues :: Text -> Thread -> IO [Text]
 threadGetHeaderValues h t = do
-  ms <- flatThread <$> threadGetMessages t
-  return $ catMaybes $ map (lookup h . msgHeaders) ms
-
-messagesHeaderValues :: Text -> [Message] -> [Text]
-messagesHeaderValues h ms = catMaybes $ map (lookup h . msgHeaders) ms
-
-messageHeaderValue :: Text -> Message -> Maybe Text
-messageHeaderValue h = lookup h . msgHeaders
-
--- TODO: use a Foldable instance
-flatThread :: [MsgThread] -> [Message]
-flatThread = (>>= tMsgs)
-  where
-    tMsgs t = mtMsg t : flatThread (mtReplies t)
+  ms <- flatThread <$> threadGetMessages False t
+  return $ catMaybes $ map (lookup h . _msgHeaders) ms
 
 notmuch :: [String] -> IO String
 notmuch args = readProcess "/usr/bin/env" opts ""
   where
-    opts = ["notmuch", "--config=/home/jesse/.notmuch-galois"] ++ args
+    opts = ["notmuch", "--config=/home/jesse/.notmuch-config"] ++ args
 
 notmuchBS :: [String] -> IO BS.ByteString
 notmuchBS args = do
@@ -96,81 +76,4 @@ notmuchBS args = do
     createProcess (proc "/usr/bin/env" opts) { std_out = CreatePipe }
   BS.hGetContents hout
   where
-    opts = ["notmuch", "--config=/home/jesse/.notmuch-galois"] ++ args
-
-
-data MsgThread = MsgThread
-  { mtMsg :: Message
-  , mtReplies :: [MsgThread]
-  }
-  deriving Show
-
-data Message = Message
-  { msgId :: MessageId
-  , msgHeaders :: [(Text, Text)]
-  , msgBody :: [MessagePart]
-  , msgFilename :: FilePath
-  , msgTags :: [Text]
-  }
-  deriving (Eq, Ord, Show)
-
-data MessagePart = MessagePart
-  { mpId :: Int
-  , mpContentType :: Text
-  , mpSubparts :: [MessagePart]
-  }
-  deriving (Eq, Ord, Show)
-
-instance FromJSON MsgThread where
-  parseJSON (Ae.Array a) = if V.length a == 2 then
-    MsgThread <$> msg <*> replies
-  else
-    fail "error parsing MsgThread: expected pair of message and reply list"
-    where
-      msg = parseJSON (a ! 0)
-      replies = parseJSON (a ! 1)
-  parseJSON _ = fail "error parsing MsgThread: expected array"
-
-instance FromJSON Message where
-  parseJSON (Ae.Object o) =
-    Message <$> o .: "id"
-            <*> (HM.toList <$> o .: "headers")
-            <*> o .: "body"
-            <*> o .: "filename"
-            <*> o .: "tags"
-    where
-  parseJSON _ = fail "error parsing Message: expected object"
-
-instance FromJSON MessagePart where
-  parseJSON (Ae.Object o) =
-    MessagePart <$> o .: "id"
-                <*> o .: "content-type"
-                <*> subparts
-    where
-      content = HM.lookup "content" o
-      subparts = case content of
-        Just ps@(Ae.Array _) -> parseJSON ps
-        Just _               -> pure []
-        Nothing              -> pure []
-
-  parseJSON _ = fail "error parsing MessagePart: expected object"
-
--- per RFC 2392
-instance Identifiable Message where
-  toUri m = URI
-    { uriScheme = "mid:"
-    , uriAuthority = Nothing
-    , uriPath = unpack (msgId m)
-    , uriQuery = ""
-    , uriFragment = ""
-    }
-
--- per RFC 2392
-instance Identifiable (Message, MessagePart) where
-  toUri (m, p) = URI
-    { uriScheme = "mid:"
-    , uriAuthority = Nothing
-    , uriPath = unpack (msgId m) ++ "/" ++ show (mpId p)
-    , uriQuery = ""
-    , uriFragment = ""
-    }
+    opts = ["notmuch", "--config=/home/jesse/.notmuch-config"] ++ args

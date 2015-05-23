@@ -14,7 +14,8 @@ import           Data.Maybe (catMaybes, listToMaybe)
 import           Data.Text (Text)
 
 import Network.Mail.Locutoria.MailingList
-import Network.Mail.Locutoria.Notmuch
+import Network.Mail.Locutoria.Message
+import Network.Mail.Locutoria.Notmuch hiding (MessageId)
 
 data Index = Index
   { _activities    :: Activities
@@ -57,8 +58,8 @@ fetchRecentConversations db = do
 
 toConv :: Thread -> IO Conversation
 toConv t = do
-  ms   <- threadGetMessagesFlat t
-  chan <- getMailingLists (msgFilename <$> ms)
+  ms   <- threadGetMessagesFlat True t
+  chan <- getMailingLists (_msgFilename <$> ms)
   return $ Conversation
     { _convId   = tId t
     , _list     = listToMaybe chan

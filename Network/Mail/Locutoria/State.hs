@@ -13,20 +13,23 @@ import           Data.Text (Text)
 import           Network.Mail.Locutoria.Index hiding (_conversations, conversations)
 import qualified Network.Mail.Locutoria.Index as Index
 import           Network.Mail.Locutoria.MailingList
-import           Network.Mail.Locutoria.Notmuch
+import           Network.Mail.Locutoria.Message
+import           Network.Mail.Locutoria.Notmuch hiding (MessageId)
 
 data State = State
   { _index           :: Index
   , _selectedChannel :: Channel
   , _selectedThread  :: Maybe ThreadId
   , _refreshing      :: Bool
-  , _activity        :: Activity
+  , _route           :: Route
   }
   deriving Show
 
-data Activity = Conversations
-              | Compose ThreadId
-              | Shutdown
+data Route = Root
+           | ShowChannel Channel
+           | ShowConversation Channel ThreadId
+           | ComposeReply Channel ThreadId
+           | Shutdown
   deriving Show
 
 data ChannelGroup = ChannelGroup
@@ -47,7 +50,7 @@ instance Default State where
               , _selectedChannel = EmptyChannel
               , _selectedThread  = Nothing
               , _refreshing      = False
-              , _activity        = Conversations
+              , _route           = Root
               }
 
 makeLenses ''State
@@ -72,4 +75,4 @@ inChannel FlaggedChannel c   = tagged "flagged" c
 inChannel (ListChannel ml) c = (c & preview (list . traverse . mlId)) == Just (ml^.mlId)
 
 tagged :: Text -> Conversation -> Bool
-tagged tag c = any (\m -> tag `elem` msgTags m) (c^.messages)
+tagged tag c = any (\m -> tag `elem` _msgTags m) (c^.messages)
