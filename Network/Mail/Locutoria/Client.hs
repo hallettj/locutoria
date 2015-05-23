@@ -33,10 +33,8 @@ type Action = Handler Event -> IO ()
 
 data Event = Refresh
            | DoneRefresh
-           | ComposeReply ThreadId
            | GenericError Text
-           | SetChannel Channel
-           | SetThread (Maybe ThreadId)
+           | SetRoute Route
            | IndexUpdate (Index -> Index)
            | Quit
            | RawMessage Text
@@ -45,10 +43,11 @@ locutoria :: Config
           -> (Handler Event -> State -> IO Ui)
           -> IO ()
 locutoria config getUi = do
+  let initState = def
   (addEvent, fireEvent) <- newAddHandler
-  (Ui runUi updateUi)   <- getUi fireEvent def
+  (Ui runUi updateUi)   <- getUi fireEvent initState
   network <- compile $
-    networkDescription config addEvent fireEvent updateUi
+    networkDescription config addEvent fireEvent updateUi initState
   actuate network
   runUi
   pause network
@@ -58,11 +57,11 @@ networkDescription :: forall t. Frameworks t
                    -> AddHandler Event
                    -> Handler Event
                    -> (State -> IO ())
+                   -> State
                    -> Moment t ()
-networkDescription config addEvent fireEvent updateUi = do
+networkDescription config addEvent fireEvent updateUi initState = do
   incomingEvents <- fromAddHandler addEvent
   let
-    initState        = def
     handler          = handle config <$> incomingEvents
     (actions, state) = mapAccum initState handler
     ui               = updateUi <$> state
@@ -83,13 +82,8 @@ handle config event s = case event of
       (noAction, s)
 
   DoneRefresh -> (noAction, s & refreshing .~ False)
-
   IndexUpdate f -> (noAction, s & index %~ f)
-
-  SetChannel chan -> (noAction, s { _selectedChannel = chan })
-  SetThread threadId -> (noAction, s { _selectedThread = threadId })
-
-  ComposeReply threadId -> (noAction, s { _activity = Compose threadId })
+  SetRoute r -> (noAction, s { _route = r })
 
   -- ComposeReply tId -> action s $ \fire -> do
   --   msg <- composeReply (Text.pack tId)
@@ -97,7 +91,7 @@ handle config event s = case event of
   --     Left  err  -> putStrLn (show err)
   --     Right mail -> send mail >> fire Refresh
 
-  Quit -> (noAction, s { _activity = Shutdown })
+  Quit -> (noAction, s { _route = Shutdown })
 
   where
     db       = clDb config
@@ -107,8 +101,7 @@ handle config event s = case event of
 instance Show Event where
   show Refresh                 = "Refresh"
   show DoneRefresh             = "DoneRefresh"
-  show (SetChannel chan)       = "SetChannel " ++ show chan
+  show (SetRoute r)            = "SetRoute " ++ show r
   show (IndexUpdate _)         = "IndexUpdate"
-  show (ComposeReply threadId) = "ComposeReply " ++ show threadId
   show Quit                    = "Quit"
   show _                       = "Uknown Event"

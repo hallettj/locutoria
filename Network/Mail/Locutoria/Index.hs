@@ -24,17 +24,17 @@ data Index = Index
   -- , _likeCounts :: LikeCounts
   -- , _threads    :: Threads
   }
-  deriving Show
+  deriving (Eq, Show)
 
 type Activities = Map MessageId [Activity]
 -- type LikeCounts = Map MessageId Int
 -- type Threads    = Map ChannelId [ThreadInfo]
 
 data Conversation = Conversation
-  { _convId   :: ThreadId
-  , _list     :: Maybe MailingList
-  , _messages :: [Message]
-  , _subject  :: Maybe Text
+  { _convId       :: ThreadId
+  , _convList     :: Maybe MailingList
+  , _convMessages :: [Message]
+  , _convSubject  :: Maybe Text
   }
   deriving (Eq, Ord, Show)
 
@@ -61,14 +61,14 @@ toConv t = do
   ms   <- threadGetMessagesFlat True t
   chan <- getMailingLists (_msgFilename <$> ms)
   return $ Conversation
-    { _convId   = tId t
-    , _list     = listToMaybe chan
-    , _messages = ms
-    , _subject  = mHead ms >>= messageHeaderValue "Subject"
+    { _convId       = tId t
+    , _convList     = listToMaybe chan
+    , _convMessages = ms
+    , _convSubject  = mHead ms >>= messageHeaderValue "Subject"
     }
 
 lists :: Index -> [MailingList]
-lists idx = nub $ sort $ catMaybes $ _list <$> idx^.conversations
+lists idx = nub $ sort $ catMaybes $ _convList <$> idx^.conversations
 
 -- fetchLikeCounts :: Database -> Index -> IO (Index -> Index)
 -- fetchLikeCounts _ index = do

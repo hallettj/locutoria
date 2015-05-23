@@ -14,23 +14,20 @@ import           Network.Mail.Locutoria.Index hiding (_conversations, conversati
 import qualified Network.Mail.Locutoria.Index as Index
 import           Network.Mail.Locutoria.MailingList
 import           Network.Mail.Locutoria.Message
-import           Network.Mail.Locutoria.Notmuch hiding (MessageId)
 
 data State = State
   { _index           :: Index
-  , _selectedChannel :: Channel
-  , _selectedThread  :: Maybe ThreadId
   , _refreshing      :: Bool
   , _route           :: Route
   }
-  deriving Show
+  deriving (Eq, Show)
 
 data Route = Root
            | ShowChannel Channel
-           | ShowConversation Channel ThreadId
-           | ComposeReply Channel ThreadId
+           | ShowConversation Channel Conversation
+           | ComposeReply Channel Conversation
            | Shutdown
-  deriving Show
+  deriving (Eq, Ord, Show)
 
 data ChannelGroup = ChannelGroup
   { _groupHeading  :: Text
@@ -38,8 +35,7 @@ data ChannelGroup = ChannelGroup
   }
   deriving (Eq, Ord, Show)
 
-data Channel = EmptyChannel
-             | FlaggedChannel
+data Channel = FlaggedChannel
              | ListChannel MailingList
              | NoListChannel
   deriving (Eq, Ord, Show)
@@ -47,14 +43,28 @@ data Channel = EmptyChannel
 
 instance Default State where
   def = State { _index           = def
-              , _selectedChannel = EmptyChannel
-              , _selectedThread  = Nothing
               , _refreshing      = False
               , _route           = Root
               }
 
 makeLenses ''State
 makeLenses ''ChannelGroup
+
+selectedChannel :: State -> Maybe Channel
+selectedChannel state = case state^.route of
+  Root                    -> Nothing
+  ShowChannel chan        -> Just chan
+  ShowConversation chan _ -> Just chan
+  ComposeReply chan _     -> Just chan
+  Shutdown                -> Nothing
+
+selectedConversation :: State -> Maybe Conversation
+selectedConversation state = case state^.route of
+  Root                    -> Nothing
+  ShowChannel _           -> Nothing
+  ShowConversation _ conv -> Just conv
+  ComposeReply _ conv     -> Just conv
+  Shutdown                -> Nothing
 
 channelGroups :: State -> [ChannelGroup]
 channelGroups s =
@@ -66,13 +76,14 @@ channelGroups s =
     ls = ListChannel <$> lists (_index s)
 
 conversations :: State -> [Conversation]
-conversations s = filter (inChannel (s^.selectedChannel)) (s^.index.Index.conversations)
+conversations s = case selectedChannel s of
+  Just chan -> filter (inChannel chan) (s^.index.Index.conversations)
+  Nothing   -> []
 
 inChannel :: Channel -> Conversation -> Bool
-inChannel EmptyChannel _     = False
-inChannel NoListChannel c    = isNothing (c^.list)
+inChannel NoListChannel c    = isNothing (c^.convList)
 inChannel FlaggedChannel c   = tagged "flagged" c
-inChannel (ListChannel ml) c = (c & preview (list . traverse . mlId)) == Just (ml^.mlId)
+inChannel (ListChannel ml) c = (c & preview (convList . traverse . mlId)) == Just (ml^.mlId)
 
 tagged :: Text -> Conversation -> Bool
-tagged tag c = any (\m -> tag `elem` _msgTags m) (c^.messages)
+tagged tag c = any (\m -> tag `elem` _msgTags m) (c^.convMessages)

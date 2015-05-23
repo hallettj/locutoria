@@ -42,6 +42,7 @@ executable client
   build-depends:       base >=4.7 && <5,
                        activitystreams-aeson,
                        aeson,
+                       brick,
                        bytestring,
                        case-insensitive,
                        containers,
@@ -60,7 +61,6 @@ executable client
                        unix,
                        unordered-containers,
                        vector,
-                       vty >=5.0.0,
-                       vty-ui
+                       vty >=5.0.0
   default-language:    Haskell2010
   ghc-options:         -threaded -Wall
