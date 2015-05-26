@@ -26,7 +26,6 @@ data Route = Root
            | ShowChannel Channel
            | ShowConversation Channel Conversation
            | ComposeReply Channel Conversation
-           | Shutdown
   deriving (Eq, Ord, Show)
 
 data ChannelGroup = ChannelGroup
@@ -56,7 +55,6 @@ selectedChannel state = case state^.route of
   ShowChannel chan        -> Just chan
   ShowConversation chan _ -> Just chan
   ComposeReply chan _     -> Just chan
-  Shutdown                -> Nothing
 
 selectedConversation :: State -> Maybe Conversation
 selectedConversation state = case state^.route of
@@ -64,7 +62,6 @@ selectedConversation state = case state^.route of
   ShowChannel _           -> Nothing
   ShowConversation _ conv -> Just conv
   ComposeReply _ conv     -> Just conv
-  Shutdown                -> Nothing
 
 channelGroups :: State -> [ChannelGroup]
 channelGroups s =

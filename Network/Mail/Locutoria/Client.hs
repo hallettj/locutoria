@@ -18,6 +18,7 @@ import           Reactive.Banana.Frameworks ( Frameworks
                                             , reactimate
                                             , reactimate'
                                             )
+import           System.Exit (exitSuccess)
 
 import           Network.Mail.Locutoria.Index
 import           Network.Mail.Locutoria.Notmuch
@@ -91,7 +92,7 @@ handle config event s = case event of
   --     Left  err  -> putStrLn (show err)
   --     Right mail -> send mail >> fire Refresh
 
-  Quit -> (noAction, s { _route = Shutdown })
+  Quit -> (const exitSuccess, s)
 
   where
     db       = clDb config
