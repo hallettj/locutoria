@@ -8,15 +8,17 @@ import           Control.Applicative ((<$>), (<*>), pure)
 import           Control.Lens (makeLenses)
 import           Data.Aeson ( FromJSON(..)
                             , (.:)
+                            , (.:?)
                             )
 import qualified Data.Aeson as Ae
 import qualified Data.HashMap.Strict as HM
 import           Data.List (intersperse)
-import           Data.Maybe (catMaybes)
+import           Data.Maybe (catMaybes, fromMaybe)
 import           Data.Monoid (mconcat)
 import           Data.Text (Text, unpack)
 import           Data.Vector ((!))
 import qualified Data.Vector as V
+-- import qualified Network.HTTP.Media.MediaType as M
 import           Network.URI (URI(..))
 
 import           Network.Mail.Locutoria.Identifiable
@@ -30,19 +32,26 @@ data MsgThread = MsgThread
   deriving Show
 
 data Message = Message
-  { _msgId :: MessageId
-  , _msgHeaders :: [(Text, Text)]
-  , _msgBody :: [MessagePart]
-  , _msgFilename :: FilePath
-  , _msgTags :: [Text]
+  { _msgId           :: MessageId
+  , _msgHeaders      :: [(Text, Text)]
+  , _msgBody         :: [MessagePart]
+  , _msgFilename     :: FilePath
+  , _msgTags         :: [Text]
+  , _msgTimestamp    :: Int
+  , _msgDateRelative :: Text
   }
   deriving (Eq, Ord, Show)
 
 data MessagePart = MessagePart
-  { _mpId :: Int
-  , _mpContentType :: Text
-  , _mpContent :: Maybe Text
-  , _mpSubparts :: [MessagePart]
+  { _mpId                      :: Maybe Int
+  -- , _mpContentType             :: Maybe M.MediaType
+  , _mpContentType             :: Maybe Text
+  , _mpContentCharset          :: Maybe Text
+  , _mpContentTransferEncoding :: Maybe Text
+  , _mpContentLength           :: Maybe Int
+  , _mpFilename                :: Maybe Text
+  , _mpTextContent             :: Maybe Text
+  , _mpSubparts                :: [MessagePart]
   }
   deriving (Eq, Ord, Show)
 
@@ -67,21 +76,30 @@ instance FromJSON Message where
             <*> o .: "body"
             <*> o .: "filename"
             <*> o .: "tags"
+            <*> o .: "timestamp"
+            <*> o .: "date_relative"
     where
   parseJSON _ = fail "error parsing Message: expected object"
 
 instance FromJSON MessagePart where
   parseJSON (Ae.Object o) =
-    MessagePart <$> o .: "id"
-                <*> o .: "content-type"
-                <*> o .: "content"
+    MessagePart <$> o .:? "id"
+                -- <*> contentType
+                <*> o .:? "content-type"
+                <*> o .:? "content-charset"
+                <*> o .:? "content-transfer-encoding"
+                <*> o .:? "content-length"
+                <*> o .:? "filename"
+                <*> textContent
                 <*> subparts
     where
       content = HM.lookup "content" o
-      subparts = case content of
-        Just ps@(Ae.Array _) -> parseJSON ps
-        Just _               -> pure []
-        Nothing              -> pure []
+      (textContent, subparts) = case content of
+        Just ps@(Ae.Array _) -> (pure Nothing,    parseJSON ps)
+        Just (Ae.String txt) -> (pure $ Just txt, pure [])
+        Just _               -> (pure Nothing,    pure [])
+        Nothing              -> (pure Nothing,    pure [])
+      -- contentType = (>>= M.parse) <$> o .:? "content-type"
 
   parseJSON _ = fail "error parsing MessagePart: expected object"
 
@@ -100,7 +118,7 @@ instance Identifiable (Message, MessagePart) where
   toUri (m, p) = URI
     { uriScheme = "mid:"
     , uriAuthority = Nothing
-    , uriPath = unpack (_msgId m) ++ "/" ++ show (_mpId p)
+    , uriPath = unpack (_msgId m) ++ "/" ++ maybe "" show (_mpId p)
     , uriQuery = ""
     , uriFragment = ""
     }
@@ -118,7 +136,7 @@ flatThread = (>>= tMsgs)
     tMsgs t = _mtMsg t : flatThread (_mtReplies t)
 
 msgText :: Message -> Text
-msgText = mconcat . intersperse "\n" . catMaybes . map _mpContent . filter plainText . flatParts
+msgText = mconcat . intersperse "\n" . catMaybes . map _mpTextContent . filter plainText . flatParts
   where
-    plainText = (== "text/plain") . _mpContentType
+    plainText = (== "text/plain") . fromMaybe "" . _mpContentType
     flatParts m = (_msgBody m) >>= _mpSubparts  -- TODO: this only flattens two levels
