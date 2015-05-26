@@ -51,7 +51,7 @@ makeLenses ''Conversation
 
 fetchRecentConversations :: Database -> IO (Index -> Index)
 fetchRecentConversations db = do
-  q  <- queryCreate db "date: 3 months"
+  q  <- queryCreate db "date:1month.."
   ts <- queryThreads q
   cs <- mapM toConv ts
   return $ \index -> index { _conversations = cs }
