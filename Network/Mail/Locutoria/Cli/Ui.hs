@@ -45,8 +45,11 @@ resumeUi chan theApp stateRef = do
     runVty vty chan theApp (initialSt state)
 
 drawUi :: St -> [Prim St]
-drawUi st = conversationsView st
--- TODO: draw different views depending on current route
+drawUi st = case st^.stUpstreamState^.route of
+  Root                 -> channelView st
+  ShowChannel _ _      -> channelView st
+  ShowConversation _ _ -> conversationView st
+  ComposeReply _ _     -> undefined
 
 uiEvent :: KeyBindings -> Handler Client.Event -> Event -> St -> IO St
 uiEvent kb fire e st = case e of
@@ -54,9 +57,9 @@ uiEvent kb fire e st = case e of
   VtyEvent _                -> return st
   ClientState state         ->
     let chans = flattenChannelGroups (channelGroups state)
-        convs = conversations state
     in return $ st & stChannels      %~ listReplace chans
-                   & stConversations %~ listReplace convs
+                   & stConversations %~ listReplace (conversations state)
+                   & stMessages      %~ listReplace (messages state)
                    & stUpstreamState .~ state
 
 flattenChannelGroups :: [ChannelGroup] -> [Maybe Channel]

@@ -126,6 +126,7 @@ instance Identifiable (Message, MessagePart) where
 messagesHeaderValues :: Text -> [Message] -> [Text]
 messagesHeaderValues h ms = catMaybes $ map (lookup h . _msgHeaders) ms
 
+-- TODO: case-insensitive comparisons
 messageHeaderValue :: Text -> Message -> Maybe Text
 messageHeaderValue h = lookup h . _msgHeaders
 
@@ -134,6 +135,9 @@ flatThread :: [MsgThread] -> [Message]
 flatThread = (>>= tMsgs)
   where
     tMsgs t = _mtMsg t : flatThread (_mtReplies t)
+
+msgAuthor :: Message -> Maybe Text
+msgAuthor = messageHeaderValue "From"
 
 msgText :: Message -> Text
 msgText = mconcat . intersperse "\n" . catMaybes . map _mpTextContent . filter plainText . flatParts

@@ -23,7 +23,7 @@ data State = State
   deriving (Eq, Show)
 
 data Route = Root
-           | ShowChannel Channel
+           | ShowChannel Channel (Maybe Conversation)
            | ShowConversation Channel Conversation
            | ComposeReply Channel Conversation
   deriving (Eq, Ord, Show)
@@ -52,14 +52,14 @@ makeLenses ''ChannelGroup
 selectedChannel :: State -> Maybe Channel
 selectedChannel state = case state^.route of
   Root                    -> Nothing
-  ShowChannel chan        -> Just chan
+  ShowChannel chan _      -> Just chan
   ShowConversation chan _ -> Just chan
   ComposeReply chan _     -> Just chan
 
 selectedConversation :: State -> Maybe Conversation
 selectedConversation state = case state^.route of
   Root                    -> Nothing
-  ShowChannel _           -> Nothing
+  ShowChannel _ conv      -> conv
   ShowConversation _ conv -> Just conv
   ComposeReply _ conv     -> Just conv
 
@@ -75,6 +75,11 @@ channelGroups s =
 conversations :: State -> [Conversation]
 conversations s = case selectedChannel s of
   Just chan -> filter (inChannel chan) (s^.index.Index.conversations)
+  Nothing   -> []
+
+messages :: State -> [Message]
+messages s = case selectedConversation s of
+  Just conv -> conv^.convMessages
   Nothing   -> []
 
 inChannel :: Channel -> Conversation -> Bool
