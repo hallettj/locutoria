@@ -40,7 +40,7 @@ initialSt state = St
 -- top-level views
 
 channelView :: St -> [Prim St]
-channelView st = [channelList st <+> conversationList st]
+channelView st = [channelList st <<+ conversationList st]
 
 conversationView :: St -> [Prim St]
 conversationView st = [channelList st <+> messageList st]
@@ -50,10 +50,10 @@ conversationView st = [channelList st <+> messageList st]
 
 channelList :: St -> Prim St
 channelList _ =
-  border unicode $ HLimit 40 $ VLimit 65 $ drawList stChannels
+  border unicode $ hLimit 40 $ withLens stChannels drawList
 
 channelListItem :: Bool -> Maybe Channel -> Prim (List (Maybe Channel))
-channelListItem sel chan = listItem sel $ Txt (unpack (channelDisplay chan))
+channelListItem sel chan = listItem sel $ txt (unpack (channelDisplay chan))
 
 channelDisplay :: Maybe Channel -> Text
 channelDisplay Nothing                = ""
@@ -62,22 +62,22 @@ channelDisplay (Just NoListChannel)   = "Direct"
 channelDisplay (Just (ListChannel l)) = _mlId l
 
 conversationList :: St -> Prim St
-conversationList _ = drawList stConversations
+conversationList _ = withLens stConversations drawList
 
 conversationListItem :: Bool -> Conversation -> Prim (List Conversation)
-conversationListItem sel conv = listItem sel $ Txt (unpack (fromMaybe "" (conv^.convSubject)))
+conversationListItem sel conv = listItem sel $ txt (unpack (fromMaybe "" (conv^.convSubject)))
 
 messageList :: St -> Prim St
-messageList _ = drawList stMessages
+messageList _ = withLens stMessages drawList
 
 messageListItem :: Bool -> Message -> Prim (List Message)
 messageListItem sel msg = listItem sel $
-  border unicode $ HLimit 100 $
-    Txt (author <> "  —  " <> date)
+  border unicode $ hLimit 100 $
+    txt (author <> "  —  " <> date)
     <=>
     hBorder unicode
     <=>
-    Txt content
+    txt content
   where
     author  = unpack $ fromMaybe "(unknown author)" $ msgAuthor msg
     date    = unpack $ msg^.msgDateRelative
@@ -89,5 +89,5 @@ messageListItem sel msg = listItem sel $
 listItem :: Bool -> Prim (List e) -> Prim (List e)
 listItem sel widget =
   let selAttr = white `on` blue
-      maybeSelect = if sel then UseAttr selAttr else id
+      maybeSelect = if sel then useAttr selAttr else id
   in maybeSelect widget
