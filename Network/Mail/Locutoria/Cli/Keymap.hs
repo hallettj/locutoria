@@ -93,16 +93,16 @@ setItem lens mkEvent f fire st = do
 
 showConv :: UiAction
 showConv fire st = do
-  case (st^.stUpstreamState^.to selectedChannel,
-        st^.stUpstreamState^.to selectedConversation) of
+  case (st^.stUpstreamState.to selectedChannel,
+        st^.stUpstreamState.to selectedConversation) of
     (Just chan, Just conv) -> fire (Client.SetRoute $ ShowConversation chan conv)
     _                      -> return ()
   return st
 
 composeReply :: UiAction
 composeReply fire st = do
-  case (st^.stUpstreamState^.to selectedChannel,
-        st^.stUpstreamState^.to selectedConversation) of
+  case (st^.stUpstreamState.to selectedChannel,
+        st^.stUpstreamState.to selectedConversation) of
     (Just chan, Just conv) -> fire (Client.SetRoute $ ComposeReply chan conv)
     _                      -> return ()
   return st
