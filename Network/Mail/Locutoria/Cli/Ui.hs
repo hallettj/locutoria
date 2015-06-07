@@ -12,7 +12,7 @@ import qualified Graphics.Vty as Vty
 
 import           Brick.List
 import           Brick.Main
-import           Brick.Prim
+import           Brick.Render
 
 import           Network.Mail.Locutoria.Cli.Keymap
 import           Network.Mail.Locutoria.Cli.Widgets
@@ -42,9 +42,10 @@ resumeUi chan theApp stateRef = do
   state <- readIORef stateRef
   withVty (Vty.mkVty def) $ \vty -> do
     _ <- forkIO $ supplyVtyEvents vty VtyEvent chan
-    runVty vty chan theApp (initialSt state)
+    (w, h) <- Vty.displayBounds $ Vty.outputIface vty
+    runVty vty chan theApp (initialSt state & stScreenSize .~ (w, h))
 
-drawUi :: St -> [Prim St]
+drawUi :: St -> [Render St]
 drawUi st = case st^.stUpstreamState^.route of
   Root                 -> channelView st
   ShowChannel _ _      -> channelView st
@@ -54,8 +55,9 @@ drawUi st = case st^.stUpstreamState^.route of
 uiEvent :: KeyBindings -> Handler Client.Event -> Event -> St -> IO St
 uiEvent kb fire e st = case e of
   VtyEvent (Vty.EvKey key mods) -> handleKey kb fire key mods st
-  VtyEvent _                -> return st
-  ClientState state         ->
+  VtyEvent (Vty.EvResize w h)   -> return $ st & stScreenSize .~ (w, h)
+  VtyEvent _                    -> return st
+  ClientState state             ->
     let chans = flattenChannelGroups (channelGroups state)
     in return $ st & stChannels      %~ listReplace chans
                    & stConversations %~ listReplace (conversations state)
