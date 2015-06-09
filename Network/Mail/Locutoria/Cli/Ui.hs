@@ -49,7 +49,7 @@ runUi vty chan app rs st = do
   e <- readChan chan
   newSt <- appHandleEvent app e st
   case newSt^.stNextAction of
-    Just act -> act (newSt & stNextAction .~ Nothing)
+    Just act -> Vty.shutdown vty >> act (newSt & stNextAction .~ Nothing)
     Nothing  -> runUi vty chan app newRs newSt
 
 drawUi :: St -> [Render]
