@@ -23,7 +23,8 @@ import           Network.Mail.Locutoria.State
 
 data St = St
   { _stUpstreamState :: State
-  , _stVty           :: Vty
+  , _stVty           :: Maybe Vty
+  , _stNextAction    :: IO ()
   , _stScreenSize    :: (Int, Int)
   , _stChannels      :: List (Maybe Channel)
   , _stConversations :: List Conversation
@@ -32,10 +33,11 @@ data St = St
 
 makeLenses ''St
 
-initialSt :: State -> Vty -> St
-initialSt state vty = St
+initialSt :: State -> St
+initialSt state = St
   { _stUpstreamState = state
-  , _stVty           = vty
+  , _stVty           = Nothing
+  , _stNextAction    = return ()
   , _stScreenSize    = (80, 50)
   , _stChannels      = list channelListItem []
   , _stConversations = list conversationListItem []

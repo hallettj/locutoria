@@ -3,6 +3,7 @@
 
 module Network.Mail.Locutoria.Compose where
 
+import           Control.Applicative ((<$>))
 import           Control.Lens ((&), (.~), (^.))
 import           Data.Aeson (decode, encode)
 import qualified Data.ByteString.Lazy as LB
@@ -23,6 +24,10 @@ import           Network.Mail.Mime ( Address(..)
 import           Network.Mail.Mime.Parser (ParseError, parseMessage)
 import           Network.URI (URI(..), parseURI)
 import           System.IO (hClose)
+import           System.Posix.Env (getEnvDefault)
+import           System.Posix.Files (removeLink)
+import           System.Posix.IO
+import qualified System.Posix.Temp as Temp
 import           System.Process
 
 import Network.Mail.Locutoria.Identifiable
@@ -50,12 +55,21 @@ send mail = renderMail' mail >>= LB.writeFile "/home/jesse/sent"
 composeReply :: SearchTerm -> IO (Either ParseError Mail)
 composeReply term = do
   template <- notmuchBS ["reply", Text.unpack term]
-  (Just hin, Just hout, _, _) <- createProcess $ (proc "/usr/bin/env" ["vipe", ".markdown"])
-    { std_in = CreatePipe, std_out = CreatePipe, delegate_ctlc = True }
-  LB.hPut hin template
-  hClose hin
-  bs <- LB.hGetContents hout
-  return $ parseMessage "message" bs
+  output   <- inputViaEditor template
+  return $ parseMessage "message" output
+
+inputViaEditor :: LB.ByteString -> IO LB.ByteString
+inputViaEditor input = do
+  (pathTemp, hTemp) <- Temp.mkstemps "" ".markdown"
+  LB.hPut hTemp input
+  hClose hTemp
+
+  editor <- getEnvDefault "EDITOR" "/usr/bin/editor"
+  callProcess editor [pathTemp]
+
+  content <- LB.readFile pathTemp
+  removeLink pathTemp
+  return content
 
 addActivity :: Activity -> Mail -> Mail
 addActivity act = addPart (catMaybes [fallbackPart act, Just (activityPart act)])
