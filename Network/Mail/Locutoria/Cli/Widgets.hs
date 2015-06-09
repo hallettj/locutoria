@@ -11,6 +11,7 @@ import           Data.Text (Text, unpack)
 import           Graphics.Vty
 import           Text.LineBreak
 
+import           Brick.Core
 import           Brick.List
 import           Brick.Render
 import           Brick.Border
@@ -39,28 +40,29 @@ initialSt state = St
   , _stVty           = Nothing
   , _stNextAction    = return ()
   , _stScreenSize    = (80, 50)
-  , _stChannels      = list channelListItem []
-  , _stConversations = list conversationListItem []
-  , _stMessages      = list messageListItem []
+  , _stChannels      = list (Name "channels")      channelListItem []
+  , _stConversations = list (Name "conversations") conversationListItem []
+  , _stMessages      = list (Name "messages")      messageListItem []
+  , _stEditing       = False
   }
 
 
 -- top-level views
 
-channelView :: St -> [Render St]
+channelView :: St -> [Render]
 channelView st = [channelList st <<+ conversationList st]
 
-conversationView :: St -> [Render St]
+conversationView :: St -> [Render]
 conversationView st = [channelList st <+> messageList st]
 
 
 -- widgets
 
-channelList :: St -> Render St
+channelList :: St -> Render
 channelList st =
-  border unicode $ hLimit 45 $ vLimit (st^.stScreenSize._2 - 2) $ withLens stChannels drawList
+  border $ hLimit 45 $ vLimit (st^.stScreenSize._2 - 2) $ renderList (st^.stChannels)
 
-channelListItem :: Bool -> Maybe Channel -> Render (List (Maybe Channel))
+channelListItem :: Bool -> Maybe Channel -> Render
 channelListItem sel chan = listItem sel $ txt (unpack (channelDisplay chan))
 
 channelDisplay :: Maybe Channel -> Text
@@ -69,28 +71,28 @@ channelDisplay (Just FlaggedChannel)  = "Flagged"
 channelDisplay (Just NoListChannel)   = "Direct"
 channelDisplay (Just (ListChannel l)) = _mlId l
 
-conversationList :: St -> Render St
-conversationList _ = withLens stConversations drawList
+conversationList :: St -> Render
+conversationList st = renderList $ st^.stConversations
 
-conversationListItem :: Bool -> Conversation -> Render (List Conversation)
+conversationListItem :: Bool -> Conversation -> Render
 conversationListItem sel conv = listItem sel $ txt (unpack (fromMaybe "" (conv^.convSubject)))
 
-messageList :: St -> Render St
-messageList _ = withLens stMessages drawList
+messageList :: St -> Render
+messageList st = renderList $ st^.stMessages
 
-messageListItem :: Bool -> Message -> Render (List Message)
+messageListItem :: Bool -> Message -> Render
 messageListItem sel msg = listItem sel $
-  border unicode $ hLimit 100 $
+  border $ hLimit 100 $
     txt (author <> "  —  " <> date)
     <=>
-    hBorder unicode
+    hBorder
     <=>
     messageContent 80 msg
   where
     author  = unpack $ fromMaybe "(unknown author)" $ msgAuthor msg
     date    = unpack $ msg^.msgDateRelative
 
-messageContent :: Int -> Message -> Render a
+messageContent :: Int -> Message -> Render
 messageContent w msg | null content = txt "(no content)"
                      | otherwise    = txtArea w content
   where
@@ -99,13 +101,13 @@ messageContent w msg | null content = txt "(no content)"
 
 -- helpers
 
-listItem :: Bool -> Render (List e) -> Render (List e)
+listItem :: Bool -> Render -> Render
 listItem sel widget =
   let selAttr = white `on` blue
-      maybeSelect = if sel then useAttr selAttr else id
+      maybeSelect = if sel then withAttr selAttr else id
   in maybeSelect widget
 
-txtArea :: Int -> String -> Render a
+txtArea :: Int -> String -> Render
 txtArea w s =
   let bf = BreakFormat
         { bfMaxCol       = w

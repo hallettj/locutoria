@@ -53,10 +53,10 @@ resumeUi chan theApp stRef = do
     runVty vty chan theApp (st & stScreenSize .~ (w, h)
                                & stVty        .~ Just vty
                                & stNextAction .~ return ())
-  st <- readIORef stRef
-  st^.stNextAction
+    st' <- readIORef stRef
+    st'^.stNextAction
 
-drawUi :: St -> [Render St]
+drawUi :: St -> [Render]
 drawUi st = case st^.stUpstreamState.route of
   Root                 -> channelView st
   ShowChannel _ _      -> channelView st

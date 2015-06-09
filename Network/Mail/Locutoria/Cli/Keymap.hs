@@ -10,7 +10,7 @@ import qualified Data.Map as Map
 import           Data.Default (Default, def)
 import           Graphics.Vty.Input (Key(..), Modifier(..))
 
-import           Brick.List (List, listSelectedElement, moveBy, moveTo)
+import           Brick.List (List, listSelectedElement, listMoveBy, listMoveTo)
 
 import           Network.Mail.Locutoria.Cli.Widgets
 import qualified Network.Mail.Locutoria.Client as Client
@@ -49,27 +49,27 @@ defKeymapGlobal :: Map KeyCombo UiAction
 defKeymapGlobal = Map.fromList
   [ ((KChar 'q', []),      \fire st -> fire Client.Quit >> return st)
   , ((KChar '@', []),      \fire st -> fire Client.Refresh >> return st)
-  , ((KChar 'p', [MCtrl]), setChannel (moveBy (-1)))
-  , ((KChar 'n', [MCtrl]), setChannel (moveBy 1))
+  , ((KChar 'p', [MCtrl]), setChannel (listMoveBy (-1)))
+  , ((KChar 'n', [MCtrl]), setChannel (listMoveBy 1))
   ]
 
 defKeymapChannelView :: Map KeyCombo UiAction
 defKeymapChannelView = Map.fromList
   [ ((KChar 'r', []), composeReply)
   , ((KEnter,    []), showConv)
-  , ((KChar 'j', []), setConv (moveBy 1))
-  , ((KChar 'k', []), setConv (moveBy (-1)))
-  , ((KChar 'g', []), setConv (moveTo 0))
-  , ((KChar 'G', []), setConv (moveTo (-1)))
+  , ((KChar 'j', []), setConv (listMoveBy 1))
+  , ((KChar 'k', []), setConv (listMoveBy (-1)))
+  , ((KChar 'g', []), setConv (listMoveTo 0))
+  , ((KChar 'G', []), setConv (listMoveTo (-1)))
   ]
 
 defKeymapConversationView :: Map KeyCombo UiAction
 defKeymapConversationView = Map.fromList
   [ ((KChar 'r', []), composeReply)
-  , ((KChar 'j', []), setMsg (moveBy 1))
-  , ((KChar 'k', []), setMsg (moveBy (-1)))
-  , ((KChar 'g', []), setMsg (moveTo 0))
-  , ((KChar 'G', []), setMsg (moveTo (-1)))
+  , ((KChar 'j', []), setMsg (listMoveBy 1))
+  , ((KChar 'k', []), setMsg (listMoveBy (-1)))
+  , ((KChar 'g', []), setMsg (listMoveTo 0))
+  , ((KChar 'G', []), setMsg (listMoveTo (-1)))
   ]
 
 setChannel :: (List (Maybe Channel) -> List (Maybe Channel)) -> UiAction
