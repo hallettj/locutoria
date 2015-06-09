@@ -2,11 +2,10 @@
 
 module Network.Mail.Locutoria.Cli.Ui where
 
-import           Control.Concurrent (Chan, forkIO, newChan, writeChan)
+import           Control.Concurrent (Chan, forkIO, newChan, readChan, writeChan)
 import           Control.Event.Handler (Handler)
 import           Control.Lens
 import           Data.Default (def)
-import           Data.IORef
 import           Data.List (intercalate)
 import qualified Data.Text as Text
 import qualified Graphics.Vty as Vty
@@ -28,33 +27,30 @@ data Event = VtyEvent    Vty.Event
 
 ui :: KeyBindings -> Handler Client.Event -> State -> IO Client.Ui
 ui kb fire upstreamState = do
-  stRef <- newIORef $ initialSt upstreamState
   chan  <- newChan
   let theApp = def { appDraw         = drawUi
                    , appChooseCursor = showFirstCursor
-                   , appHandleEvent  = trackSt stRef $ uiEvent run kb fire
+                   , appHandleEvent  = uiEvent run kb fire
                    }
       update state = writeChan chan (ClientState state)
-      run          = resumeUi chan theApp stRef
-  return $ Client.Ui run update
-  where
-    trackSt :: IORef St -> (Event -> St -> IO St) -> Event -> St -> IO St
-    trackSt ref f e st = do
-      st' <- f e st
-      writeIORef ref st'
-      return st'
+      run          = resumeUi chan theApp def
+  return $ Client.Ui (run (initialSt upstreamState)) update
 
-resumeUi :: Chan Event -> App St Event -> IORef St -> IO ()
-resumeUi chan theApp stRef = do
+resumeUi :: Chan Event -> App St Event -> RenderState -> St -> IO ()
+resumeUi chan theApp rs st = do
   withVty (Vty.mkVty def) $ \vty -> do
     _      <- forkIO $ supplyVtyEvents vty VtyEvent chan
     (w, h) <- Vty.displayBounds $ Vty.outputIface vty
-    st     <- readIORef stRef
-    runVty vty chan theApp (st & stScreenSize .~ (w, h)
-                               & stVty        .~ Just vty
-                               & stNextAction .~ return ())
-    st' <- readIORef stRef
-    st'^.stNextAction
+    runUi vty chan theApp rs (st & stScreenSize .~ (w, h))
+
+runUi :: Vty.Vty -> Chan Event -> App St Event -> RenderState -> St -> IO ()
+runUi vty chan app rs st = do
+  newRs <- renderApp vty app st rs
+  e <- readChan chan
+  newSt <- appHandleEvent app e st
+  case newSt^.stNextAction of
+    Just act -> act (newSt & stNextAction .~ Nothing)
+    Nothing  -> runUi vty chan app newRs newSt
 
 drawUi :: St -> [Render]
 drawUi st = case st^.stUpstreamState.route of
@@ -63,7 +59,7 @@ drawUi st = case st^.stUpstreamState.route of
   ShowConversation _ _ -> conversationView st
   ComposeReply _ _     -> undefined
 
-uiEvent :: IO () -> KeyBindings -> Handler Client.Event -> Event -> St -> IO St
+uiEvent :: (St -> IO ()) -> KeyBindings -> Handler Client.Event -> Event -> St -> IO St
 uiEvent continue kb fire e st = case e of
   VtyEvent (Vty.EvKey key mods) -> handleKey kb fire key mods st
   VtyEvent (Vty.EvResize w h)   -> return $ st & stScreenSize .~ (w, h)
@@ -83,16 +79,15 @@ flattenChannelGroups groups =
   let chanLists  = map (map Just . (^.groupChannels)) groups
   in  intercalate [Nothing] chanLists
 
-compose :: IO () -> Handler Client.Event -> Channel -> Conversation -> St -> IO St
+compose :: (St -> IO ()) -> Handler Client.Event -> Channel -> Conversation -> St -> IO St
 compose continue fire chan conv st = do
-  maybe (return ()) Vty.shutdown (st^.stVty)
-  return $ st & stNextAction            .~ composeAction continue fire conv
+  return $ st & stNextAction            .~ Just (composeAction continue fire conv)
               & stUpstreamState . route .~ ShowConversation chan conv
 
-composeAction :: IO () -> Handler Client.Event -> Conversation -> IO ()
-composeAction continue fire conv = do
+composeAction :: (St -> IO ()) -> Handler Client.Event -> Conversation -> St -> IO ()
+composeAction continue fire conv st = do
   result <- C.composeReply (Text.pack (conv^.convId))
   case result of
     Right mail -> C.send mail
     Left  err  -> fire $ Client.GenericError (Text.pack (show err))
-  continue
+  continue st
