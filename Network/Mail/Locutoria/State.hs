@@ -14,6 +14,7 @@ import           Network.Mail.Locutoria.Index hiding (_conversations, conversati
 import qualified Network.Mail.Locutoria.Index as Index
 import           Network.Mail.Locutoria.MailingList
 import           Network.Mail.Locutoria.Message
+import           Network.Mail.Locutoria.Conversation
 
 data State = State
   { _index           :: Index

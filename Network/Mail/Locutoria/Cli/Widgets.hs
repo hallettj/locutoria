@@ -6,9 +6,10 @@ module Network.Mail.Locutoria.Cli.Widgets where
 import           Control.Lens
 import           Data.List (foldl1')
 import           Data.Maybe (fromMaybe)
-import           Data.Monoid ((<>))
+import           Data.Monoid ((<>), mconcat)
 import           Data.Text (Text, unpack)
 import           Graphics.Vty
+import           Network.Mail.Mime (Address(..))
 import           Text.LineBreak
 
 import           Brick.Core
@@ -17,7 +18,7 @@ import           Brick.Render
 import           Brick.Border
 import           Brick.Util
 
-import           Network.Mail.Locutoria.Index
+import           Network.Mail.Locutoria.Conversation
 import           Network.Mail.Locutoria.MailingList
 import           Network.Mail.Locutoria.Message
 import           Network.Mail.Locutoria.State
@@ -29,18 +30,20 @@ data St = St
   , _stChannels      :: List (Maybe Channel)
   , _stConversations :: List Conversation
   , _stMessages      :: List Message
+  , _stUserAddr      :: Address
   }
 
 makeLenses ''St
 
-initialSt :: State -> St
-initialSt state = St
+initialSt :: Address -> State -> St
+initialSt userAddr state = St
   { _stUpstreamState = state
   , _stNextAction    = Nothing
   , _stScreenSize    = (80, 50)
   , _stChannels      = list (Name "channels")      channelListItem []
   , _stConversations = list (Name "conversations") conversationListItem []
   , _stMessages      = list (Name "messages")      messageListItem []
+  , _stUserAddr      = userAddr
   }
 
 
@@ -86,7 +89,7 @@ messageListItem sel msg = listItem sel $
     <=>
     messageContent 80 msg
   where
-    author  = unpack $ fromMaybe "(unknown author)" $ msgAuthor msg
+    author  = unpack $ either (const "(unknown author)") id $ fmap showAddress $ msgFrom msg
     date    = unpack $ msg^.msgDateRelative
 
 messageContent :: Int -> Message -> Render
@@ -114,3 +117,7 @@ txtArea w s =
         }
       ls = breakStringLn bf s
   in foldl1' (<=>) $ map txt ls
+
+showAddress :: Address -> Text
+showAddress (Address (Just name) addr) = mconcat [name, " <", addr, ">"]
+showAddress (Address Nothing addr) = addr

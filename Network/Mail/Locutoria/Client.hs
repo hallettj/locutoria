@@ -8,6 +8,7 @@ import           Control.Event.Handler (AddHandler, Handler)
 import           Control.Lens ((^.), (.~), (%~), (&))
 import           Data.Default (def)
 import           Data.Text (Text)
+import           Network.Mail.Mime (Address(..))
 import           Reactive.Banana (Moment, compile, mapAccum)
 import           Reactive.Banana.Frameworks ( Frameworks
                                             , actuate
@@ -26,6 +27,7 @@ import           Network.Mail.Locutoria.State
 
 data Config = Config
   { clDb :: Database
+  , clUserAddr :: Address
   }
 
 data Ui = Ui { _runUi :: IO (), _updateUi :: State -> IO () }

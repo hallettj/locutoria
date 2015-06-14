@@ -14,7 +14,7 @@ import           Brick.List (List, listSelectedElement, listMoveBy, listMoveTo)
 
 import           Network.Mail.Locutoria.Cli.Widgets
 import qualified Network.Mail.Locutoria.Client as Client
-import           Network.Mail.Locutoria.Index
+import           Network.Mail.Locutoria.Conversation
 import           Network.Mail.Locutoria.Message
 import           Network.Mail.Locutoria.State
 

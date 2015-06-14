@@ -6,6 +6,7 @@ module Network.Mail.Locutoria.Message where
 
 import           Control.Applicative ((<$>), (<*>), pure)
 import           Control.Lens (makeLenses)
+import           Data.Attoparsec.ByteString (parseOnly)
 import           Data.Aeson ( FromJSON(..)
                             , (.:)
                             , (.:?)
@@ -16,8 +17,14 @@ import           Data.List (intersperse)
 import           Data.Maybe (catMaybes, fromMaybe)
 import           Data.Monoid (mconcat)
 import           Data.Text (Text, unpack)
+import           Data.Text.Encoding (decodeUtf8, encodeUtf8)
+import qualified Data.Text.Lazy as TL
 import           Data.Vector ((!))
 import qualified Data.Vector as V
+import qualified Network.Email.Header.Parser as H
+import           Network.Email.Header.Types (Mailbox(..), Recipient(..))
+import qualified Network.Email.Header.Types as HT
+import           Network.Mail.Mime
 -- import qualified Network.HTTP.Media.MediaType as M
 import           Network.URI (URI(..))
 
@@ -136,11 +143,56 @@ flatThread = (>>= tMsgs)
   where
     tMsgs t = _mtMsg t : flatThread (_mtReplies t)
 
-msgAuthor :: Message -> Maybe Text
-msgAuthor = messageHeaderValue "From"
+type E = String
+
+msgSubject :: Message -> Maybe Text
+msgSubject = messageHeaderValue "Subject"
+
+msgFrom :: Message -> Either E Address
+msgFrom msg = do
+  from <- liftMaybe "No 'From' header found" $ messageHeaderValue "From" msg
+  box  <- parseOnly H.mailbox (encodeUtf8 from)
+  return $ toAddress box
+
+msgTo :: Message -> Either E [Address]
+msgTo msg = do
+  to <- liftMaybe "No 'To' header found" $ messageHeaderValue "To" msg
+  parseRecipients to
+
+msgCc :: Message -> Either E [Address]
+msgCc msg = do
+  to <- liftMaybe "No 'Cc' header found" $ messageHeaderValue "Cc" msg
+  parseRecipients to
+
+parseRecipients :: Text -> Either String [Address]
+parseRecipients txt = map toAddress . flattenRecipients <$> parseOnly H.recipientList input
+  where
+    input = encodeUtf8 txt
+
+flattenRecipients :: [Recipient] -> [Mailbox]
+flattenRecipients rs = do
+  r <- rs
+  case r of
+    Individual mailbox -> [mailbox]
+    Group _ mailboxes  -> mailboxes
+
+toAddress :: Mailbox -> Address
+toAddress (Mailbox name (HT.Address addr)) = Address name' addr'
+  where
+    name' = mconcat . TL.toChunks <$> name
+    addr' = decodeUtf8 addr
 
 msgText :: Message -> Text
 msgText = mconcat . intersperse "\n" . catMaybes . map _mpTextContent . filter plainText . flatParts
   where
     plainText = (== "text/plain") . fromMaybe "" . _mpContentType
     flatParts m = (_msgBody m) >>= _mpSubparts  -- TODO: this only flattens two levels
+
+-- TODO: Is there a library function for this?
+liftMaybe :: a -> Maybe b -> Either a b
+liftMaybe _ (Just x) = Right x
+liftMaybe d Nothing  = Left d
+
+-- dropLeft :: Either a b -> Maybe b
+-- dropLeft (Right x) = Just x
+-- dropLeft (Left _)  = Nothing

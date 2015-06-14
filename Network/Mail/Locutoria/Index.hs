@@ -10,9 +10,9 @@ import           Data.Default (Default, def)
 import           Data.List (nub, sort)
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import           Data.Maybe (catMaybes, listToMaybe)
-import           Data.Text (Text)
+import           Data.Maybe (catMaybes)
 
+import Network.Mail.Locutoria.Conversation
 import Network.Mail.Locutoria.MailingList
 import Network.Mail.Locutoria.Message
 import Network.Mail.Locutoria.Notmuch hiding (MessageId)
@@ -30,14 +30,6 @@ type Activities = Map MessageId [Activity]
 -- type LikeCounts = Map MessageId Int
 -- type Threads    = Map ChannelId [ThreadInfo]
 
-data Conversation = Conversation
-  { _convId       :: ThreadId
-  , _convList     :: Maybe MailingList
-  , _convMessages :: [Message]
-  , _convSubject  :: Maybe Text
-  }
-  deriving (Eq, Ord, Show)
-
 
 instance Default Index where
   def = Index
@@ -47,7 +39,6 @@ instance Default Index where
 
 
 makeLenses ''Index
-makeLenses ''Conversation
 
 fetchRecentConversations :: Database -> IO (Index -> Index)
 fetchRecentConversations db = do
@@ -55,17 +46,6 @@ fetchRecentConversations db = do
   ts <- queryThreads q
   cs <- mapM toConv ts
   return $ \index -> index { _conversations = cs }
-
-toConv :: Thread -> IO Conversation
-toConv t = do
-  ms   <- threadGetMessagesFlat True t
-  chan <- getMailingLists (_msgFilename <$> ms)
-  return $ Conversation
-    { _convId       = tId t
-    , _convList     = listToMaybe chan
-    , _convMessages = ms
-    , _convSubject  = mHead ms >>= messageHeaderValue "Subject"
-    }
 
 lists :: Index -> [MailingList]
 lists idx = nub $ sort $ catMaybes $ _convList <$> idx^.conversations
@@ -91,7 +71,3 @@ lists idx = nub $ sort $ catMaybes $ _convList <$> idx^.conversations
 
 -- toThread :: ThreadInfo -> Thread
 -- toThread (threadId, _, _, _) = Thread threadId
-
-mHead :: [a] -> Maybe a
-mHead [] = Nothing
-mHead (x:_) = Just x

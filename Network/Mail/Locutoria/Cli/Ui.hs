@@ -18,15 +18,15 @@ import           Network.Mail.Locutoria.Cli.Keymap
 import           Network.Mail.Locutoria.Cli.Widgets
 import qualified Network.Mail.Locutoria.Client as Client
 import qualified Network.Mail.Locutoria.Compose as C
-import           Network.Mail.Locutoria.Index hiding (_conversations, conversations)
+import           Network.Mail.Locutoria.Conversation
 import           Network.Mail.Locutoria.State
 
 data Event = VtyEvent    Vty.Event
            | ClientState State
   deriving (Eq, Show)
 
-ui :: KeyBindings -> Handler Client.Event -> State -> IO Client.Ui
-ui kb fire upstreamState = do
+ui :: Client.Config -> KeyBindings -> Handler Client.Event -> State -> IO Client.Ui
+ui config kb fire upstreamState = do
   chan  <- newChan
   let theApp = def { appDraw         = drawUi
                    , appChooseCursor = showFirstCursor
@@ -34,7 +34,7 @@ ui kb fire upstreamState = do
                    }
       update state = writeChan chan (ClientState state)
       run          = resumeUi chan theApp def
-  return $ Client.Ui (run (initialSt upstreamState)) update
+  return $ Client.Ui (run (initialSt (Client.clUserAddr config) upstreamState)) update
 
 resumeUi :: Chan Event -> App St Event -> RenderState -> St -> IO ()
 resumeUi chan theApp rs st = do
@@ -86,7 +86,7 @@ compose continue fire chan conv st = do
 
 composeAction :: (St -> IO ()) -> Handler Client.Event -> Conversation -> St -> IO ()
 composeAction continue fire conv st = do
-  result <- C.composeReply (Text.pack (conv^.convId))
+  result <- C.composeReply (st^.stUserAddr) conv
   case result of
     Right mail -> C.send mail
     Left  err  -> fire $ Client.GenericError (Text.pack (show err))
