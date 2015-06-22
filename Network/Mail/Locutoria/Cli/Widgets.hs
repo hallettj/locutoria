@@ -7,11 +7,13 @@ import           Control.Lens
 import           Data.List (foldl1')
 import           Data.Maybe (fromMaybe)
 import           Data.Monoid ((<>), mconcat)
-import           Data.Text (Text, unpack)
+import           Data.Text (Text)
+import qualified Data.Text as Text
 import           Graphics.Vty
 import           Network.Mail.Mime (Address(..))
 import           Text.LineBreak
 
+import           Brick.AttrMap
 import           Brick.Core
 import           Brick.List
 import           Brick.Render
@@ -61,7 +63,7 @@ channelList st =
   border $ hLimit 45 $ vLimit (st^.stScreenSize._2 - 2) $ renderList (st^.stChannels)
 
 channelListItem :: Bool -> Maybe Channel -> Render
-channelListItem sel chan = listItem sel $ txt (unpack (channelDisplay chan))
+channelListItem _ chan = txt (channelDisplay chan)
 
 channelDisplay :: Maybe Channel -> Text
 channelDisplay Nothing                = ""
@@ -73,13 +75,13 @@ conversationList :: St -> Render
 conversationList st = renderList $ st^.stConversations
 
 conversationListItem :: Bool -> Conversation -> Render
-conversationListItem sel conv = listItem sel $ txt (unpack (fromMaybe "" (conv^.convSubject)))
+conversationListItem _ conv = txt (fromMaybe "" (conv^.convSubject))
 
 messageList :: St -> Render
 messageList st = renderList $ st^.stMessages
 
 messageListItem :: Bool -> Message -> Render
-messageListItem sel msg = listItem sel $
+messageListItem _ msg =
   border $ hLimit 100 $
     txt (author <> "  —  " <> date)
     <=>
@@ -87,25 +89,24 @@ messageListItem sel msg = listItem sel $
     <=>
     messageContent 80 msg
   where
-    author  = unpack $ either (const "(unknown author)") id $ fmap showAddress $ msgFrom msg
-    date    = unpack $ msg^.msgDateRelative
+    author  = either (const "(unknown author)") id $ fmap showAddress $ msgFrom msg
+    date    = msg^.msgDateRelative
 
 messageContent :: Int -> Message -> Render
-messageContent w msg | null content = txt "(no content)"
-                     | otherwise    = txtArea w content
+messageContent w msg | Text.null content = txt "(no content)"
+                     | otherwise         = txtArea w content
   where
-    content = unpack $ msgText msg
+    content = msgText msg
 
 
 -- helpers
 
-listItem :: Bool -> Render -> Render
-listItem sel widget =
-  let selAttr = white `on` blue
-      maybeSelect = if sel then withAttr selAttr else id
-  in maybeSelect widget
+theAttrMap :: AttrMap
+theAttrMap = attrMap defAttr
+  [ (listSelectedAttr, white `on` blue)
+  ]
 
-txtArea :: Int -> String -> Render
+txtArea :: Int -> Text -> Render
 txtArea w s =
   let bf = BreakFormat
         { bfMaxCol       = w
@@ -113,7 +114,7 @@ txtArea w s =
         , bfHyphenSymbol = '-'
         , bfHyphenator   = Nothing
         }
-      ls = breakStringLn bf s
+      ls = map Text.pack $ breakStringLn bf (Text.unpack s)
   in foldl1' (<=>) $ map txt ls
 
 showAddress :: Address -> Text

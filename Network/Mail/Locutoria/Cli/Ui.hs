@@ -2,14 +2,16 @@
 
 module Network.Mail.Locutoria.Cli.Ui where
 
-import           Control.Concurrent (Chan, forkIO, newChan, readChan, writeChan)
+import           Control.Concurrent (Chan, forkIO, newChan, writeChan)
 import           Control.Event.Handler (Handler)
 import           Control.Lens
+import           Control.Monad.Trans (liftIO)
 import           Data.Default (def)
 import           Data.List (intercalate)
 import qualified Data.Text as Text
 import qualified Graphics.Vty as Vty
 
+import           Brick.Border.Style
 import           Brick.List
 import           Brick.Main
 import           Brick.Render
@@ -31,6 +33,7 @@ ui cfg kb fire upstreamState = do
   let theApp = def { appDraw         = drawUi
                    , appChooseCursor = showFirstCursor
                    , appHandleEvent  = uiEvent run cfg kb fire
+                   , appAttrMap      = const theAttrMap
                    }
       update state = writeChan chan (ClientState state)
       run          = resumeUi chan theApp def
@@ -41,27 +44,25 @@ resumeUi chan theApp rs st = do
   withVty (Vty.mkVty def) $ \vty -> do
     _      <- forkIO $ supplyVtyEvents vty VtyEvent chan
     (w, h) <- Vty.displayBounds $ Vty.outputIface vty
-    runUi vty chan theApp rs (st & stScreenSize .~ (w, h))
+    runUi vty chan theApp (st & stScreenSize .~ (w, h)) rs
 
-runUi :: Vty.Vty -> Chan Event -> App St Event -> RenderState -> St -> IO ()
-runUi vty chan app rs st = do
-  newRs <- renderApp vty app st rs
-  e <- readChan chan
-  newSt <- appHandleEvent app e st
+runUi :: Vty.Vty -> Chan Event -> App St Event -> St -> RenderState -> IO ()
+runUi vty chan app st rs = do
+  (newSt, newRs) <- stepVty vty chan app st rs
   case newSt^.stNextAction of
     Just act -> Vty.shutdown vty >> act (newSt & stNextAction .~ Nothing)
-    Nothing  -> runUi vty chan app newRs newSt
+    Nothing  -> runUi vty chan app newSt newRs
 
 drawUi :: St -> [Render]
-drawUi st = case st^.stUpstreamState.route of
+drawUi st = map (withBorderStyle unicode) $ case st^.stUpstreamState.route of
   Root                 -> channelView st
   ShowChannel _ _      -> channelView st
   ShowConversation _ _ -> conversationView st
   ComposeReply _ _     -> undefined
 
-uiEvent :: (St -> IO ()) -> Client.Config -> KeyBindings -> Handler Client.Event -> Event -> St -> IO St
+uiEvent :: (St -> IO ()) -> Client.Config -> KeyBindings -> Handler Client.Event -> Event -> St -> EventM St
 uiEvent continue cfg kb fire e st = case e of
-  VtyEvent (Vty.EvKey key mods) -> handleKey kb fire key mods st
+  VtyEvent (Vty.EvKey key mods) -> liftIO $ handleKey kb fire key mods st
   VtyEvent (Vty.EvResize w h)   -> return $ st & stScreenSize .~ (w, h)
   VtyEvent _                    -> return st
   ClientState state             ->
@@ -79,9 +80,9 @@ flattenChannelGroups groups =
   let chanLists  = map (map Just . (^.groupChannels)) groups
   in  intercalate [Nothing] chanLists
 
-compose :: (St -> IO ()) -> Client.Config -> Handler Client.Event -> Channel -> Conversation -> St -> IO St
+compose :: (St -> IO ()) -> Client.Config -> Handler Client.Event -> Channel -> Conversation -> St -> EventM St
 compose continue cfg fire chan conv st = do
-  return $ st & stNextAction            .~ Just (composeAction cfg continue fire conv)
+  return $ st & stNextAction            .~ Just (composeAction continue cfg fire conv)
               & stUpstreamState . route .~ ShowConversation chan conv
 
 composeAction :: (St -> IO ()) -> Client.Config -> Handler Client.Event -> Conversation -> St -> IO ()
