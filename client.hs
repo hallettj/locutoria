@@ -22,13 +22,14 @@ config :: IO Config
 config = return $ Config
   { clDb = db
   , clUserAddr = me
+  , clSendCmd = ["msmtp", "--read-envelope-from", "--read-recipients"]
   }
 
 db :: Database
 db = Database "/home/jesse/mail/galois" DatabaseModeReadOnly
 
 me :: Address
-me = Address (Just "Jesse Hallett") "jesse@galois.com"
+me = Address (Just "Jesse Hallett") "jesse@sitr.us"
 
 keybindings :: KeyBindings
 keybindings = def

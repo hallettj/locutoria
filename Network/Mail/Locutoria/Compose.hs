@@ -37,18 +37,10 @@ import Network.Mail.Locutoria.Identifiable
 import Network.Mail.Locutoria.Message
 
 type Headers = [(B.ByteString, Text)]
+type SendCommand = [String]
 
--- send :: Mail -> IO ()
--- send mail = renderMail' mail >>= (\bs -> sendmailCustom "/usr/bin/tee" ["/home/jesse/sent"] bs)
-
-send :: Mail -> IO ()
-send mail = renderMail' mail >>= LB.writeFile "/home/jesse/sent"
-
--- send :: Mail -> IO ()
--- send mail = renderMail' mail >>= (\bs -> sendmailCustom "/usr/bin/env"
---   [ "msmtp"
---   , "--read-envelope-from"
---   , "--read-recipients"] bs)
+send :: SendCommand -> Mail -> IO ()
+send cmd mail = renderMail' mail >>= (\bs -> sendmailCustom "/usr/bin/env" cmd bs)
 
 composeReply :: Address -> Conversation -> IO (Either String Mail)
 composeReply from conv = runEitherT $ do

@@ -26,15 +26,15 @@ data Event = VtyEvent    Vty.Event
   deriving (Eq, Show)
 
 ui :: Client.Config -> KeyBindings -> Handler Client.Event -> State -> IO Client.Ui
-ui config kb fire upstreamState = do
+ui cfg kb fire upstreamState = do
   chan  <- newChan
   let theApp = def { appDraw         = drawUi
                    , appChooseCursor = showFirstCursor
-                   , appHandleEvent  = uiEvent run kb fire
+                   , appHandleEvent  = uiEvent run cfg kb fire
                    }
       update state = writeChan chan (ClientState state)
       run          = resumeUi chan theApp def
-  return $ Client.Ui (run (initialSt (Client.clUserAddr config) upstreamState)) update
+  return $ Client.Ui (run (initialSt upstreamState)) update
 
 resumeUi :: Chan Event -> App St Event -> RenderState -> St -> IO ()
 resumeUi chan theApp rs st = do
@@ -59,14 +59,14 @@ drawUi st = case st^.stUpstreamState.route of
   ShowConversation _ _ -> conversationView st
   ComposeReply _ _     -> undefined
 
-uiEvent :: (St -> IO ()) -> KeyBindings -> Handler Client.Event -> Event -> St -> IO St
-uiEvent continue kb fire e st = case e of
+uiEvent :: (St -> IO ()) -> Client.Config -> KeyBindings -> Handler Client.Event -> Event -> St -> IO St
+uiEvent continue cfg kb fire e st = case e of
   VtyEvent (Vty.EvKey key mods) -> handleKey kb fire key mods st
   VtyEvent (Vty.EvResize w h)   -> return $ st & stScreenSize .~ (w, h)
   VtyEvent _                    -> return st
   ClientState state             ->
     case state^.route of
-      ComposeReply chan conv -> compose continue fire chan conv (st & stUpstreamState .~ state)
+      ComposeReply chan conv -> compose continue cfg fire chan conv (st & stUpstreamState .~ state)
       _                      ->
         let chans = flattenChannelGroups (channelGroups state)
         in return $ st & stChannels      %~ listReplace chans
@@ -79,15 +79,15 @@ flattenChannelGroups groups =
   let chanLists  = map (map Just . (^.groupChannels)) groups
   in  intercalate [Nothing] chanLists
 
-compose :: (St -> IO ()) -> Handler Client.Event -> Channel -> Conversation -> St -> IO St
-compose continue fire chan conv st = do
-  return $ st & stNextAction            .~ Just (composeAction continue fire conv)
+compose :: (St -> IO ()) -> Client.Config -> Handler Client.Event -> Channel -> Conversation -> St -> IO St
+compose continue cfg fire chan conv st = do
+  return $ st & stNextAction            .~ Just (composeAction cfg continue fire conv)
               & stUpstreamState . route .~ ShowConversation chan conv
 
-composeAction :: (St -> IO ()) -> Handler Client.Event -> Conversation -> St -> IO ()
-composeAction continue fire conv st = do
-  result <- C.composeReply (st^.stUserAddr) conv
+composeAction :: (St -> IO ()) -> Client.Config -> Handler Client.Event -> Conversation -> St -> IO ()
+composeAction continue cfg fire conv st = do
+  result <- C.composeReply (Client.clUserAddr cfg) conv
   case result of
-    Right mail -> C.send mail
+    Right mail -> C.send (Client.clSendCmd cfg) mail
     Left  err  -> fire $ Client.GenericError (Text.pack (show err))
   continue st

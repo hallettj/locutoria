@@ -28,6 +28,7 @@ import           Network.Mail.Locutoria.State
 data Config = Config
   { clDb :: Database
   , clUserAddr :: Address
+  , clSendCmd :: [String]
   }
 
 data Ui = Ui { _runUi :: IO (), _updateUi :: State -> IO () }

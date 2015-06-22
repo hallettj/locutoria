@@ -30,20 +30,18 @@ data St = St
   , _stChannels      :: List (Maybe Channel)
   , _stConversations :: List Conversation
   , _stMessages      :: List Message
-  , _stUserAddr      :: Address
   }
 
 makeLenses ''St
 
-initialSt :: Address -> State -> St
-initialSt userAddr state = St
+initialSt :: State -> St
+initialSt state = St
   { _stUpstreamState = state
   , _stNextAction    = Nothing
   , _stScreenSize    = (80, 50)
   , _stChannels      = list (Name "channels")      channelListItem []
   , _stConversations = list (Name "conversations") conversationListItem []
   , _stMessages      = list (Name "messages")      messageListItem []
-  , _stUserAddr      = userAddr
   }
 
 
