@@ -1,0 +1,13 @@
+flags: {}
+packages:
+- '.'
+- ../activitystreams-aeson
+- ../brick
+extra-deps:
+- datetime-0.2.1
+- email-header-0.2.0
+- linebreak-1.0.0.3
+- psqueues-0.2.0.2
+- reactive-banana-0.8.1.2
+- vty-5.2.9
+resolver: lts-2.15
