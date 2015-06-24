@@ -33,6 +33,9 @@ toConv t = do
     , _convSubject  = mHead ms >>= msgSubject
     }
 
+tagged :: Text -> Conversation -> Bool
+tagged tag c = any (\m -> tag `elem` _msgTags m) (c^.convMessages)
+
 mHead :: [a] -> Maybe a
 mHead [] = Nothing
 mHead (x:_) = Just x

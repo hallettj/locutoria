@@ -14,12 +14,12 @@ import System.Process (CreateProcess(..), StdStream(..), createProcess, proc, re
 import Network.Mail.Locutoria.Message
 
 data Database = Database { dLoc :: FilePath, dMode :: DatabaseMode  }
-  deriving Show
+  deriving (Eq, Show)
 
 data DatabaseMode =
     DatabaseModeReadOnly |
     DatabaseModeReadWrite
-  deriving (Enum, Show)
+  deriving (Eq, Enum, Show)
 
 data Query = Query { qDb :: Database, qText :: String }
 

@@ -60,7 +60,6 @@ executable client
                        mtl,
                        network-uri,
                        process,
-                       reactive-banana,
                        temporary,
                        text,
                        text-icu,

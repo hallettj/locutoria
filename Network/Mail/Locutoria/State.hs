@@ -4,65 +4,71 @@
 module Network.Mail.Locutoria.State where
 
 import           Control.Applicative ((<$>))
-import           Control.Lens (makeLenses, preview, traverse)
-import           Control.Lens.Operators
-import           Data.Default (Default, def)
-import           Data.Maybe (isNothing)
+import           Control.Lens hiding (Index)
+import           Data.Default (def)
+import           Data.List (elemIndex, find)
+import           Data.Maybe (fromJust, fromMaybe, isJust)
 import           Data.Text (Text)
 
 import           Network.Mail.Locutoria.Index hiding (_conversations, conversations)
 import qualified Network.Mail.Locutoria.Index as Index
-import           Network.Mail.Locutoria.MailingList
 import           Network.Mail.Locutoria.Message
+import           Network.Mail.Locutoria.Notmuch (Database)
+import           Network.Mail.Locutoria.Channel
 import           Network.Mail.Locutoria.Conversation
+import           Network.Mail.Locutoria.View
 
 data State = State
-  { _index           :: Index
-  , _refreshing      :: Bool
-  , _route           :: Route
+  { _stDatabase   :: Database
+  , _stIndex      :: Index
+  , _stHistory    :: History
+  , _stRefreshing :: Bool
+  , _stScreenSize :: (Int, Int)
+  , _stStatus     :: Status
   }
   deriving (Eq, Show)
 
-data Route = Root
-           | ShowChannel Channel (Maybe Conversation)
-           | ShowConversation Channel Conversation
-           | ComposeReply Channel Conversation
-  deriving (Eq, Ord, Show)
+type History = [View]
 
-data ChannelGroup = ChannelGroup
-  { _groupHeading  :: Text
-  , _groupChannels :: [Channel]
-  }
-  deriving (Eq, Ord, Show)
-
-data Channel = FlaggedChannel
-             | ListChannel MailingList
-             | NoListChannel
-  deriving (Eq, Ord, Show)
-
-
-instance Default State where
-  def = State { _index           = def
-              , _refreshing      = False
-              , _route           = Root
-              }
+data Status = GenericError Text
+            | Refreshing
+            | Nominal
+  deriving (Eq, Show)
 
 makeLenses ''State
-makeLenses ''ChannelGroup
+
+mkState :: Database -> State
+mkState db = State
+  { _stDatabase   = db
+  , _stIndex      = def
+  , _stHistory    = []
+  , _stRefreshing = False
+  , _stScreenSize = (80, 50)
+  , _stStatus     = Nominal
+  }
+
+stView :: State -> View
+stView state = case state^.stHistory of
+  v:_ -> v
+  []  -> Root
+
+pushView :: View -> State -> State
+pushView v = stHistory %~ (v:)
+
+popView :: State -> State
+popView = stHistory %~ drop 1
+
+replaceView :: View -> State -> State
+replaceView v = pushView v . popView
 
 selectedChannel :: State -> Maybe Channel
-selectedChannel state = case state^.route of
-  Root                    -> Nothing
-  ShowChannel chan _      -> Just chan
-  ShowConversation chan _ -> Just chan
-  ComposeReply chan _     -> Just chan
+selectedChannel = viewChannel . stView
 
 selectedConversation :: State -> Maybe Conversation
-selectedConversation state = case state^.route of
-  Root                    -> Nothing
-  ShowChannel _ conv      -> conv
-  ShowConversation _ conv -> Just conv
-  ComposeReply _ conv     -> Just conv
+selectedConversation = viewConversation . stView
+
+selectedMessage :: State -> Maybe Message
+selectedMessage = viewMessage . stView
 
 channelGroups :: State -> [ChannelGroup]
 channelGroups s =
@@ -71,11 +77,11 @@ channelGroups s =
   , ChannelGroup "Lists"   ls
   ]
   where
-    ls = ListChannel <$> lists (_index s)
+    ls = ListChannel <$> lists (s^.stIndex)
 
 conversations :: State -> [Conversation]
 conversations s = case selectedChannel s of
-  Just chan -> filter (inChannel chan) (s^.index.Index.conversations)
+  Just chan -> filter (inChannel chan) (s^.stIndex.Index.conversations)
   Nothing   -> []
 
 messages :: State -> [Message]
@@ -83,10 +89,53 @@ messages s = case selectedConversation s of
   Just conv -> conv^.convMessages
   Nothing   -> []
 
-inChannel :: Channel -> Conversation -> Bool
-inChannel NoListChannel c    = isNothing (c^.convList)
-inChannel FlaggedChannel c   = tagged "flagged" c
-inChannel (ListChannel ml) c = (c & preview (convList . traverse . mlId)) == Just (ml^.mlId)
 
-tagged :: Text -> Conversation -> Bool
-tagged tag c = any (\m -> tag `elem` _msgTags m) (c^.convMessages)
+-- TODO: Unnecessary boilerplate?
+
+selectedChannelIndex :: State -> Maybe Int
+selectedChannelIndex st = do
+  chan <- selectedChannel st
+  let cs = flattenChannelGroups (channelGroups st)
+  elemIndex (Just chan) cs
+
+selectedConversationIndex :: State -> Maybe Int
+selectedConversationIndex st = do
+  conv <- selectedConversation st
+  let cs = st^.to conversations
+  elemIndex conv cs
+
+selectedMessageIndex :: State -> Maybe Int
+selectedMessageIndex st = do
+  msg <- selectedMessage st
+  let ms = st^.to messages
+  elemIndex msg ms
+
+setSelectedChannel :: (Int -> Int) -> State -> State
+setSelectedChannel f st = fromMaybe st st'
+  where
+    st' = do
+      let idx = fromMaybe 0 $ selectedChannelIndex st
+      let cs = flattenChannelGroups (channelGroups st)
+      let idx' = if f idx >= 0 then f idx else length cs - f idx
+      chan <- find isJust (drop idx' cs)
+      return $ replaceView (mapChan (const (fromJust chan)) (stView st)) st
+
+setSelectedConversation :: (Int -> Int) -> State -> State
+setSelectedConversation f st = fromMaybe st st'
+  where
+    st' = do
+      let idx = fromMaybe 0 $ selectedConversationIndex st
+      let cs = conversations st
+      let idx' = if f idx >= 0 then f idx else length cs - f idx
+      conv <- find (const True) (drop idx' cs)
+      return $ replaceView (mapConv (const conv) (stView st)) st
+
+setSelectedMessage :: (Int -> Int) -> State -> State
+setSelectedMessage f st = fromMaybe st st'
+  where
+    st' = do
+      let idx = fromMaybe 0 $ selectedMessageIndex st
+      let ms = messages st
+      let idx' = if f idx >= 0 then f idx else length ms - f idx
+      msg <- find (const True) (drop idx' ms)
+      return $ replaceView (mapMsg (const msg) (stView st)) st
