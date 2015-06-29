@@ -52,7 +52,7 @@ parseURIs :: T.Text -> [URI]
 parseURIs t = catMaybes (map (parseURI . T.unpack . uri) parts)
   where
     parts = map T.strip $ T.split (== ',') t
-    uri p = T.tail (T.takeWhile (/= '>') (T.dropWhile (/= '<') p))
+    uri p = T.drop 1 (T.takeWhile (/= '>') (T.dropWhile (/= '<') p))
 
 grepHeaders :: Header -> [FilePath] -> IO [(T.Text, T.Text)]
 grepHeaders header paths = do
