@@ -16,10 +16,10 @@ module Network.Mail.Locutoria.Event
   , popView
   , quit
   , refresh
+  , showConv
   , setChannel
   , setConv
   , setMsg
-  , viewConv
   ) where
 
 import           Control.Lens hiding (Index)
@@ -99,8 +99,8 @@ setConv i = pureEvent $ setSelectedConversation (const i)
 setMsg :: Int -> Event
 setMsg i = pureEvent $ setSelectedMessage (const i)
 
-viewConv :: Event
-viewConv = withConv $ \chan conv -> State.pushView $ ShowConversation chan conv Nothing
+showConv :: Event
+showConv = withConv $ \chan conv -> State.pushView $ ShowConversation chan conv Nothing
 
 
 -- helpers

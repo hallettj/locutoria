@@ -50,7 +50,7 @@ defKeymapGlobal = Map.fromList
 defKeymapChannelView :: Map KeyCombo Event
 defKeymapChannelView = Map.fromList
   [ ((KChar 'r', []), composeReply)
-  , ((KEnter,    []), viewConv)
+  , ((KEnter,    []), showConv)
   , ((KChar 'j', []), nextConv)
   , ((KChar 'k', []), prevConv)
   , ((KChar 'g', []), setConv 0)
