@@ -43,29 +43,37 @@ viewMessage view = case view of
   ShowQueue                -> Nothing
   Quit                     -> Nothing
 
-mapChan :: (Channel -> Channel) -> View -> View
+mapChan :: (Maybe Channel -> Maybe Channel) -> View -> View
 mapChan f view = case view of
-  Root                      -> Root
-  ComposeReply chan _       -> ShowChannel (f chan) Nothing
-  ShowChannel chan _        -> ShowChannel (f chan) Nothing
-  ShowConversation chan _ _ -> ShowChannel (f chan) Nothing
+  Root                      -> showChannel Nothing
+  ComposeReply chan _       -> showChannel (Just chan)
+  ShowChannel chan _        -> showChannel (Just chan)
+  ShowConversation chan _ _ -> showChannel (Just chan)
   ShowQueue                 -> ShowQueue
   Quit                      -> Quit
+  where
+    showChannel chan = case f chan of
+      Just chan' -> ShowChannel chan' Nothing
+      Nothing    -> Root
 
-mapConv :: (Conversation -> Conversation) -> View -> View
+mapConv :: (Maybe Conversation -> Maybe Conversation) -> View -> View
 mapConv f view = case view of
   Root                         -> Root
-  ComposeReply chan conv       -> ComposeReply chan (f conv)
-  ShowChannel chan conv        -> ShowChannel chan (fmap f conv)
-  ShowConversation chan conv _ -> ShowConversation chan (f conv) Nothing
+  ComposeReply chan conv       -> go chan conv (ComposeReply chan)
+  ShowChannel chan conv        -> ShowChannel chan (f conv)
+  ShowConversation chan conv _ -> go chan conv (\c -> ShowConversation chan c Nothing)
   ShowQueue                    -> ShowQueue
   Quit                         -> Quit
+  where
+    go chan conv v = case f (Just conv) of
+      Just c  -> v c
+      Nothing -> ShowChannel chan Nothing
 
-mapMsg :: (Message -> Message) -> View -> View
+mapMsg :: (Maybe Message -> Maybe Message) -> View -> View
 mapMsg f view = case view of
   Root                           -> Root
   ComposeReply chan conv         -> ComposeReply chan conv
   ShowChannel chan conv          -> ShowChannel chan conv
-  ShowConversation chan conv msg -> ShowConversation chan conv (fmap f msg)
+  ShowConversation chan conv msg -> ShowConversation chan conv (f msg)
   ShowQueue                      -> ShowQueue
   Quit                           -> Quit

@@ -7,7 +7,7 @@ import           Control.Applicative ((<$>))
 import           Control.Lens hiding (Index)
 import           Data.Default (def)
 import           Data.List (elemIndex, find)
-import           Data.Maybe (fromJust, fromMaybe, isJust)
+import           Data.Maybe (fromMaybe, isJust)
 import           Data.Text (Text)
 
 import           Network.Mail.Locutoria.Index hiding (_conversations, conversations)
@@ -117,8 +117,10 @@ setSelectedChannel f st = fromMaybe st st'
       let idx = fromMaybe 0 $ selectedChannelIndex st
       let cs = flattenChannelGroups (channelGroups st)
       let idx' = if f idx >= 0 then f idx else length cs - f idx
-      chan <- find isJust (drop idx' cs)
-      return $ replaceView (mapChan (const (fromJust chan)) (stView st)) st
+      chan <- if idx' > idx
+        then find isJust (drop idx' cs)
+        else find isJust $ reverse $ take (idx' + 1) cs
+      return $ replaceView (mapChan (const chan) (stView st)) st
 
 setSelectedConversation :: (Int -> Int) -> State -> State
 setSelectedConversation f st = fromMaybe st st'
@@ -128,7 +130,7 @@ setSelectedConversation f st = fromMaybe st st'
       let cs = conversations st
       let idx' = if f idx >= 0 then f idx else length cs - f idx
       conv <- find (const True) (drop idx' cs)
-      return $ replaceView (mapConv (const conv) (stView st)) st
+      return $ replaceView (mapConv (const (Just conv)) (stView st)) st
 
 setSelectedMessage :: (Int -> Int) -> State -> State
 setSelectedMessage f st = fromMaybe st st'
@@ -138,4 +140,4 @@ setSelectedMessage f st = fromMaybe st st'
       let ms = messages st
       let idx' = if f idx >= 0 then f idx else length ms - f idx
       msg <- find (const True) (drop idx' ms)
-      return $ replaceView (mapMsg (const msg) (stView st)) st
+      return $ replaceView (mapMsg (const (Just msg)) (stView st)) st
