@@ -40,7 +40,7 @@ ui cfg initState = do
   customMain (Vty.mkVty def) chan app initState
 
 drawUi :: State -> [Widget]
-drawUi st = map (withBorderStyle unicode) $ case st^.to stView of
+drawUi st = map (withBorderStyle unicode) $ case st^.stView of
   Root                   -> channelView st
   ComposeReply _ _       -> undefined  -- TODO: should be unreachable
   ShowChannel _ _        -> channelView st
@@ -63,7 +63,7 @@ uiEvent cfg fire e st = case e of
     handleExternal cfg fire st'
 
 handleExternal :: Config -> Handler Event -> State -> EventM (Next State)
-handleExternal cfg fire st = case st^.to stView of
+handleExternal cfg fire st = case st^.stView of
   ComposeReply _ conv -> suspendAndResume $ do
     result <- C.composeReply (cfg^.cfgUserAddr) conv
     case result of

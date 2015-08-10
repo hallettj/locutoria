@@ -23,7 +23,7 @@ type KeyCombo = (Key, [Modifier])
 
 
 handleKey :: KeyBindings -> Key -> [Modifier] -> State -> Maybe Event
-handleKey kb key mods st = case st^.to stView of
+handleKey kb key mods st = case st^.stView of
   Root                   -> tryKeymaps [_keymapChannelView, _keymapGlobal]
   ComposeReply _ _       -> tryKeymaps [_keymapGlobal]
   ShowChannel _ _        -> tryKeymaps [_keymapChannelView, _keymapGlobal]

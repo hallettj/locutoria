@@ -3,11 +3,11 @@
 
 module Network.Mail.Locutoria.State where
 
-import           Control.Applicative ((<$>))
+import           Control.Applicative ((<$>), pure)
 import           Control.Lens hiding (Index)
 import           Data.Default (def)
 import           Data.List (elemIndex, find)
-import           Data.Maybe (fromMaybe, isJust)
+import           Data.Maybe (fromJust, fromMaybe, isJust)
 import           Data.Text (Text)
 
 import           Network.Mail.Locutoria.Index hiding (_conversations, conversations)
@@ -47,10 +47,10 @@ mkState db = State
   , _stStatus     = Nominal
   }
 
-stView :: State -> View
-stView state = case state^.stHistory of
-  v:_ -> v
-  []  -> Root
+stView :: Lens' State View
+stView f st = case st^.stHistory of
+  v:vs -> (\v' ->  st & stHistory .~ (v':vs)) <$> f v
+  []   -> (\v' ->  st & stHistory .~ (v':[])) <$> f Root
 
 pushView :: View -> State -> State
 pushView v = stHistory %~ (v:)
@@ -61,14 +61,14 @@ popView = stHistory %~ drop 1
 replaceView :: View -> State -> State
 replaceView v = pushView v . popView
 
-selectedChannel :: State -> Maybe Channel
-selectedChannel = viewChannel . stView
+selectedChannel :: Traversal' State Channel
+selectedChannel = stView . viewChannel
 
-selectedConversation :: State -> Maybe Conversation
-selectedConversation = viewConversation . stView
+selectedConversation :: Traversal' State Conversation
+selectedConversation = stView . viewConversation
 
-selectedMessage :: State -> Maybe Message
-selectedMessage = viewMessage . stView
+selectedMessage :: Traversal' State Message
+selectedMessage = stView . viewMessage
 
 channelGroups :: State -> [ChannelGroup]
 channelGroups s =
@@ -80,64 +80,47 @@ channelGroups s =
     ls = ListChannel <$> lists (s^.stIndex)
 
 conversations :: State -> [Conversation]
-conversations s = case selectedChannel s of
-  Just chan -> filter (inChannel chan) (s^.stIndex.Index.conversations)
+conversations st = case st ^? selectedChannel of
+  Just chan -> filter (inChannel chan) (st^.stIndex.Index.conversations)
   Nothing   -> []
 
 messages :: State -> [Message]
-messages s = case selectedConversation s of
+messages st = case st ^? selectedConversation of
   Just conv -> conv^.convMessages
   Nothing   -> []
 
+selectedChannelIndex :: Traversal' State Int
+selectedChannelIndex f st = case st ^? selectedChannel of
+  Nothing   -> pure st
+  Just chan ->
+    let cs  = flattenChannelGroups (channelGroups st)
+        idx = fromJust $ elemIndex (Just chan) cs
+        update idx' =
+          let chan' = if idx' > idx
+                      then find isJust (drop idx' cs)
+                      else find isJust $ reverse $ take (idx' + 1) cs
+          in st & selectedChannel .~ (fromJust (fromJust chan'))
+    in update . clamp cs <$> f idx
 
--- TODO: Unnecessary boilerplate?
-
-selectedChannelIndex :: State -> Maybe Int
-selectedChannelIndex st = do
-  chan <- selectedChannel st
-  let cs = flattenChannelGroups (channelGroups st)
-  elemIndex (Just chan) cs
-
-selectedConversationIndex :: State -> Maybe Int
-selectedConversationIndex st = do
-  conv <- selectedConversation st
-  let cs = st^.to conversations
-  elemIndex conv cs
-
-selectedMessageIndex :: State -> Maybe Int
-selectedMessageIndex st = do
-  msg <- selectedMessage st
-  let ms = st^.to messages
-  elemIndex msg ms
-
-setSelectedChannel :: (Int -> Int) -> State -> State
-setSelectedChannel f st = fromMaybe st st'
+selectedConversationIndex :: Traversal' State Int
+selectedConversationIndex f st = update . clamp cs <$> f idx
   where
-    st' = do
-      let idx = fromMaybe 0 $ selectedChannelIndex st
-      let cs = flattenChannelGroups (channelGroups st)
-      let idx' = if f idx >= 0 then f idx else length cs - f idx
-      chan <- if idx' > idx
-        then find isJust (drop idx' cs)
-        else find isJust $ reverse $ take (idx' + 1) cs
-      return $ replaceView (mapChan (const chan) (stView st)) st
+    cs  = st^.to conversations
+    idx = fromMaybe 0 $ flip elemIndex cs =<< st ^? selectedConversation
+    update idx' = st & selectedConversation .~ conv
+      where
+        conv = head (drop idx' cs)
 
-setSelectedConversation :: (Int -> Int) -> State -> State
-setSelectedConversation f st = fromMaybe st st'
+selectedMessageIndex :: Traversal' State Int
+selectedMessageIndex f st = update . clamp ms <$> f idx
   where
-    st' = do
-      let idx = fromMaybe 0 $ selectedConversationIndex st
-      let cs = conversations st
-      let idx' = if f idx >= 0 then f idx else length cs - f idx
-      conv <- find (const True) (drop idx' cs)
-      return $ replaceView (mapConv (const (Just conv)) (stView st)) st
+    ms  = messages st
+    idx = fromMaybe 0 $ flip elemIndex ms =<< st ^? selectedMessage
+    update idx' = st & selectedMessage .~ msg
+      where
+        msg = head (drop idx' ms)
 
-setSelectedMessage :: (Int -> Int) -> State -> State
-setSelectedMessage f st = fromMaybe st st'
+clamp :: [a] -> Int -> Int
+clamp xs i = if i >= 0 then i `max` end else length xs - (i `max` end)
   where
-    st' = do
-      let idx = fromMaybe 0 $ selectedMessageIndex st
-      let ms = messages st
-      let idx' = if f idx >= 0 then f idx else length ms - f idx
-      msg <- find (const True) (drop idx' ms)
-      return $ replaceView (mapMsg (const (Just msg)) (stView st)) st
+    end = length xs - 1

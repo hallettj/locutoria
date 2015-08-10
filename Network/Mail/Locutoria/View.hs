@@ -2,6 +2,9 @@
 
 module Network.Mail.Locutoria.View where
 
+import           Control.Applicative
+import           Control.Lens hiding (view)
+
 import           Network.Mail.Locutoria.Channel
 import           Network.Mail.Locutoria.Conversation
 import           Network.Mail.Locutoria.Message
@@ -14,66 +17,40 @@ data View = Root
           | Quit
   deriving (Eq, Ord, Show)
 
--- TODO: convert these functions to lenses
-
-viewChannel :: View -> Maybe Channel
-viewChannel view = case view of
-  Root                      -> Nothing
-  ComposeReply chan _       -> Just chan
-  ShowChannel chan _        -> Just chan
-  ShowConversation chan _ _ -> Just chan
-  ShowQueue                 -> Nothing
-  Quit                      -> Nothing
-
-viewConversation :: View -> Maybe Conversation
-viewConversation view = case view of
-  Root                      -> Nothing
-  ComposeReply _ conv       -> Just conv
-  ShowChannel _ conv        -> conv
-  ShowConversation _ conv _ -> Just conv
-  ShowQueue                 -> Nothing
-  Quit                      -> Nothing
-
-viewMessage :: View -> Maybe Message
-viewMessage view = case view of
-  Root                     -> Nothing
-  ComposeReply _ _         -> Nothing
-  ShowChannel _ _          -> Nothing
-  ShowConversation _ _ msg -> msg
-  ShowQueue                -> Nothing
-  Quit                     -> Nothing
-
-mapChan :: (Maybe Channel -> Maybe Channel) -> View -> View
-mapChan f view = case view of
-  Root                      -> showChannel Nothing
-  ComposeReply chan _       -> showChannel (Just chan)
-  ShowChannel chan _        -> showChannel (Just chan)
-  ShowConversation chan _ _ -> showChannel (Just chan)
-  ShowQueue                 -> ShowQueue
-  Quit                      -> Quit
+viewChannel :: Traversal' View Channel
+viewChannel f view = case view of
+  Root                      -> pure view
+  ComposeReply chan _       -> switchChannel chan
+  ShowChannel chan _        -> switchChannel chan
+  ShowConversation chan _ _ -> switchChannel chan
+  ShowQueue                 -> pure view
+  Quit                      -> pure view
   where
-    showChannel chan = case f chan of
-      Just chan' -> ShowChannel chan' Nothing
-      Nothing    -> Root
+    switchChannel chan = showIfChanged chan <$> f chan
+    showIfChanged chan chan' = if chan' == chan
+                               then view
+                               else ShowChannel chan' Nothing
 
-mapConv :: (Maybe Conversation -> Maybe Conversation) -> View -> View
-mapConv f view = case view of
-  Root                         -> Root
-  ComposeReply chan conv       -> go chan conv (ComposeReply chan)
-  ShowChannel chan conv        -> ShowChannel chan (f conv)
-  ShowConversation chan conv _ -> go chan conv (\c -> ShowConversation chan c Nothing)
-  ShowQueue                    -> ShowQueue
-  Quit                         -> Quit
+viewConversation :: Traversal' View Conversation
+viewConversation f view = case view of
+  Root                         -> pure view
+  ComposeReply chan conv       -> ComposeReply chan <$> f conv
+  ShowChannel _    Nothing     -> pure view
+  ShowChannel chan (Just conv) -> ShowChannel chan . Just <$> f conv
+  ShowConversation chan conv _ -> switchIfChanged chan conv <$> f conv
+  ShowQueue                    -> pure view
+  Quit                         -> pure view
   where
-    go chan conv v = case f (Just conv) of
-      Just c  -> v c
-      Nothing -> ShowChannel chan Nothing
+    switchIfChanged chan conv conv' = if conv == conv'
+                                      then view
+                                      else ShowConversation chan conv' Nothing
 
-mapMsg :: (Maybe Message -> Maybe Message) -> View -> View
-mapMsg f view = case view of
-  Root                           -> Root
-  ComposeReply chan conv         -> ComposeReply chan conv
-  ShowChannel chan conv          -> ShowChannel chan conv
-  ShowConversation chan conv msg -> ShowConversation chan conv (f msg)
-  ShowQueue                      -> ShowQueue
-  Quit                           -> Quit
+viewMessage :: Traversal' View Message
+viewMessage f view = case view of
+  Root                                  -> pure view
+  ComposeReply _ _                      -> pure view
+  ShowChannel _ _                       -> pure view
+  ShowConversation _    _    Nothing    -> pure view
+  ShowConversation chan conv (Just msg) -> ShowConversation chan conv . Just <$> f msg
+  ShowQueue                             -> pure view
+  Quit                                  -> pure view

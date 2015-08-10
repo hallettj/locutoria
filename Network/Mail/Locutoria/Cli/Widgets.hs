@@ -47,7 +47,7 @@ channelList st =
     listMoveTo selected $ channels
   where
     channels = list (Name "channels") channelListItem (flattenChannelGroups (st^.to channelGroups))
-    selected = fromMaybe 0 $ st^.to selectedChannelIndex
+    selected = fromMaybe 0 $ st ^? selectedChannelIndex
 
 channelListItem :: Bool -> Maybe Channel -> Widget
 channelListItem _ chan = txt (channelDisplay chan)
@@ -62,7 +62,7 @@ conversationList :: State -> Widget
 conversationList st = renderList $ listMoveTo selected $ convs
   where
     convs = list (Name "conversations") conversationListItem (st^.to conversations)
-    selected = fromMaybe 0 $ st^.to selectedConversationIndex
+    selected = fromMaybe 0 $ st ^? selectedConversationIndex
 
 conversationListItem :: Bool -> Conversation -> Widget
 conversationListItem _ conv = txt (fromMaybe "" (conv^.convSubject))

@@ -67,16 +67,16 @@ indexUpdate :: (Index -> Index) -> Event
 indexUpdate f = pureEvent $ stIndex %~ f
 
 nextChannel, prevChannel :: Event
-nextChannel = pureEvent $ setSelectedChannel (+1)
-prevChannel = pureEvent $ setSelectedChannel (\i -> i - 1)
+nextChannel = pureEvent $ selectedChannelIndex %~ (+1)
+prevChannel = pureEvent $ selectedChannelIndex %~ (\i -> i - 1)
 
 nextConv, prevConv :: Event
-nextConv = pureEvent $ setSelectedConversation (+1)
-prevConv = pureEvent $ setSelectedConversation (\i -> i - 1)
+nextConv = pureEvent $ selectedConversationIndex %~ (+1)
+prevConv = pureEvent $ selectedConversationIndex %~ (\i -> i - 1)
 
 nextMsg, prevMsg :: Event
-nextMsg = pureEvent $ setSelectedMessage (+1)
-prevMsg = pureEvent $ setSelectedMessage (\i -> i - 1)
+nextMsg = pureEvent $ selectedMessageIndex %~ (+1)
+prevMsg = pureEvent $ selectedMessageIndex %~ (\i -> i - 1)
 
 popView :: Event
 popView = pureEvent $ State.popView
@@ -91,13 +91,13 @@ quit :: Event
 quit = pureEvent $ State.pushView Quit
 
 setChannel :: Int -> Event
-setChannel i = pureEvent $ setSelectedChannel (const i)
+setChannel i = pureEvent $ selectedChannelIndex .~ i
 
 setConv :: Int -> Event
-setConv i = pureEvent $ setSelectedConversation (const i)
+setConv i = pureEvent $ selectedConversationIndex .~ i
 
 setMsg :: Int -> Event
-setMsg i = pureEvent $ setSelectedMessage (const i)
+setMsg i = pureEvent $ selectedMessageIndex .~ i
 
 showConv :: Event
 showConv = withConv $ \chan conv -> State.pushView $ ShowConversation chan conv Nothing
@@ -110,7 +110,7 @@ pureEvent f = Event $ \st -> (noSideEffect, f st)
 
 withConv :: (Channel -> Conversation -> State -> State) -> Event
 withConv f = Event $ \st ->
-  case (st^.to selectedChannel, st^.to selectedConversation) of
+  case (st ^? selectedChannel, st ^? selectedConversation) of
     (Just chan, Just conv) -> (noSideEffect, f chan conv st)
     (Just _, Nothing)      -> (($ genericError "no conversation selected"), st)
     (Nothing, _)           -> (($ genericError "no channel selected"), st)
