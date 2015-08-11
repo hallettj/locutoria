@@ -64,19 +64,26 @@ doneRefresh = pureEvent $ (stStatus .~ Nominal)
                         . (stRefreshing .~ False)
 
 indexUpdate :: (Index -> Index) -> Event
-indexUpdate f = pureEvent $ stIndex %~ f
+indexUpdate f = pureEvent $ \st ->
+  st & stIndex %~ f
+     & pushChannel
+  where
+    pushChannel st = if st^.stView == Root && not (null (stChannels st))
+                     then st & pushView (ShowChannel (head (stChannels st)) Nothing)
+                     else st
+
 
 nextChannel, prevChannel :: Event
-nextChannel = pureEvent $ selectedChannelIndex %~ (+1)
-prevChannel = pureEvent $ selectedChannelIndex %~ (\i -> i - 1)
+nextChannel = pureEvent $ stChannelIndex %~ (+1)
+prevChannel = pureEvent $ stChannelIndex %~ (\i -> (i - 1) `max` 0)
 
 nextConv, prevConv :: Event
-nextConv = pureEvent $ selectedConversationIndex %~ (+1)
-prevConv = pureEvent $ selectedConversationIndex %~ (\i -> i - 1)
+nextConv = pureEvent $ stConversationIndex %~ (+1)
+prevConv = pureEvent $ stConversationIndex %~ (\i -> i - 1)
 
 nextMsg, prevMsg :: Event
-nextMsg = pureEvent $ selectedMessageIndex %~ (+1)
-prevMsg = pureEvent $ selectedMessageIndex %~ (\i -> i - 1)
+nextMsg = pureEvent $ stMessageIndex %~ (+1)
+prevMsg = pureEvent $ stMessageIndex %~ (\i -> i - 1)
 
 popView :: Event
 popView = pureEvent $ State.popView
@@ -91,13 +98,13 @@ quit :: Event
 quit = pureEvent $ State.pushView Quit
 
 setChannel :: Int -> Event
-setChannel i = pureEvent $ selectedChannelIndex .~ i
+setChannel i = pureEvent $ stChannelIndex .~ i
 
 setConv :: Int -> Event
-setConv i = pureEvent $ selectedConversationIndex .~ i
+setConv i = pureEvent $ stConversationIndex .~ i
 
 setMsg :: Int -> Event
-setMsg i = pureEvent $ selectedMessageIndex .~ i
+setMsg i = pureEvent $ stMessageIndex .~ i
 
 showConv :: Event
 showConv = withConv $ \chan conv -> State.pushView $ ShowConversation chan conv Nothing
@@ -110,7 +117,7 @@ pureEvent f = Event $ \st -> (noSideEffect, f st)
 
 withConv :: (Channel -> Conversation -> State -> State) -> Event
 withConv f = Event $ \st ->
-  case (st ^? selectedChannel, st ^? selectedConversation) of
+  case (st ^? stChannel, st ^? stConversation) of
     (Just chan, Just conv) -> (noSideEffect, f chan conv st)
     (Just _, Nothing)      -> (($ genericError "no conversation selected"), st)
     (Nothing, _)           -> (($ genericError "no channel selected"), st)

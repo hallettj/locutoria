@@ -46,8 +46,8 @@ channelList st =
   border $ hLimit 45 $ vLimit (st^.stScreenSize._2 - 2) $ renderList $
     listMoveTo selected $ channels
   where
-    channels = list (Name "channels") channelListItem (flattenChannelGroups (st^.to channelGroups))
-    selected = fromMaybe 0 $ st ^? selectedChannelIndex
+    channels = list (Name "channels") channelListItem (flattenChannelGroups (st^.to stChannelGroups))
+    selected = fromMaybe 0 $ st ^? stChannelIndex
 
 channelListItem :: Bool -> Maybe Channel -> Widget
 channelListItem _ chan = txt (channelDisplay chan)
@@ -61,16 +61,17 @@ channelDisplay (Just (ListChannel l)) = _mlId l
 conversationList :: State -> Widget
 conversationList st = renderList $ listMoveTo selected $ convs
   where
-    convs = list (Name "conversations") conversationListItem (st^.to conversations)
-    selected = fromMaybe 0 $ st ^? selectedConversationIndex
+    convs = list (Name "conversations") conversationListItem (st^.to stConversations)
+    selected = fromMaybe 0 $ st ^? stConversationIndex
 
 conversationListItem :: Bool -> Conversation -> Widget
 conversationListItem _ conv = txt (fromMaybe "" (conv^.convSubject))
 
 messageList :: State -> Widget
-messageList st = renderList msgs
+messageList st = renderList $ listMoveTo selected $ msgs
   where
-    msgs = list (Name "messages") messageListItem (st^.to messages)
+    msgs = list (Name "messages") messageListItem (st^.to stMessages)
+    selected = fromMaybe 0 $ st ^? stMessageIndex
 
 messageListItem :: Bool -> Message -> Widget
 messageListItem _ msg =
