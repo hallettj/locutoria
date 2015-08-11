@@ -1,8 +1,12 @@
 flags: {}
 packages:
 - '.'
-- ../activitystreams-aeson
-- ../brick
+- location:
+    git: https://github.com/hallettj/activitystreams-aeson.git
+    commit: 35e6cc8ab1da31a12b434b5cb0f026b53ebf9316
+- location:
+    git: https://github.com/jtdaugherty/brick.git
+    commit: a599acb143e9f87e9aeb6a1a24906853abecd281
 extra-deps:
 - datetime-0.2.1
 - email-header-0.2.0
